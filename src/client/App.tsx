@@ -3,15 +3,13 @@ import { api } from './api';
 import type { HealthInfo } from './api';
 import { Overview } from './Overview';
 import { Providers } from './Providers';
-import { Models } from './Models';
-import { Mappings } from './Mappings';
+import { Routes } from './Routes';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'providers', label: 'Providers' },
-  { id: 'models', label: 'Models' },
-  { id: 'mappings', label: 'Mappings' },
-] as const;
+  { id: 'routes', label: 'Routes' },
+  ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
 
@@ -67,8 +65,7 @@ export function App() {
       <main className="main">
         {tab === 'overview' && <Overview />}
         {tab === 'providers' && <Providers onRefresh={refreshHealth} />}
-        {tab === 'models' && <Models onRefresh={refreshHealth} />}
-        {tab === 'mappings' && <Mappings onRefresh={refreshHealth} />}
+        {tab === 'routes' && <Routes onRefresh={refreshHealth} />}
       </main>
     </>
   );

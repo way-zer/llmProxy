@@ -16,9 +16,7 @@ async function main(): Promise<void> {
 
 
   console.log('[init] Ready. Press Ctrl+C to stop.');
-
-  console.log('[init] Ready. Press Ctrl+C to stop.');
-  await new Promise(() => {});
+  await new Promise(() => { });
 }
 
 main().catch((err) => {

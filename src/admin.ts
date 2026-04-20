@@ -97,21 +97,24 @@ export async function handleImportAll(providerName: string, corsHeaders: Record<
   }
   const cfg = getConfig();
   if (!cfg.providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, mapped = 0;
   for (const m of scan.models) {
     if (cfg.models[m.id]) { skipped++; continue; }
     addModelDef(m.id, providerName, m.id);
     added++;
+    if (!cfg.mappings[m.id]) { addMapping(m.id, providerName, m.id); mapped++; }
   }
   saveConfig();
-  return json({ success: true, providerName, total: scan.models.length, added, skipped }, corsHeaders);
+  return json({ success: true, providerName, total: scan.models.length, added, skipped, mapped }, corsHeaders);
 }
 
 export async function handleImportOne(providerName: string, upstreamModelId: string, corsHeaders: Record<string, string>): Promise<Response> {
   if (!getConfig().providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
   addModelDef(upstreamModelId, providerName, upstreamModelId);
+  const mapped = !getConfig().mappings[upstreamModelId];
+  if (mapped) addMapping(upstreamModelId, providerName, upstreamModelId);
   await saveConfig();
-  return json({ success: true, name: upstreamModelId, provider: providerName }, corsHeaders);
+  return json({ success: true, name: upstreamModelId, provider: providerName, mapped }, corsHeaders);
 }
 
 // ─── Model definitions ──────────────────────────────────────
