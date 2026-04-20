@@ -58,7 +58,13 @@ export function addProvider(name: string, baseUrl: string, apiKey: string): void
 
 export function updateProvider(name: string, baseUrl: string, apiKey: string): boolean {
   if (!config.providers[name]) return false;
-  config.providers[name] = { baseUrl, apiKey };
+  config.providers[name] = { ...config.providers[name], baseUrl, apiKey };
+  return true;
+}
+
+export function toggleProviderStar(name: string): boolean {
+  if (!config.providers[name]) return false;
+  config.providers[name] = { ...config.providers[name], starred: !config.providers[name].starred };
   return true;
 }
 

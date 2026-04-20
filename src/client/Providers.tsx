@@ -111,14 +111,22 @@ export function Providers({ onRefresh }: Props) {
     }
   };
 
-  const importOne = async (provider: string, modelId: string) => {
+  const toggleStar = async (provider: string, modelId: string) => {
+    const key = `${provider}:${modelId}`;
+    const starred = catalogSet.has(key);
+    // Optimistic local update
+    if (starred) {
+      setCatalog(prev => prev.filter(m => !(m.provider === provider && m.name === modelId)));
+    } else {
+      setCatalog(prev => [...prev, { name: modelId, provider, modelId }]);
+    }
+    // Fire API in background
     try {
-      await api.importOne(provider, modelId);
-      toast(`"${modelId}" added to catalog`);
-      await load();
-      await loadScan(provider);
+      if (starred) await api.removeModel(modelId);
+      else await api.importOne(provider, modelId);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error');
+      load(); // revert on error
     }
   };
 
@@ -167,7 +175,7 @@ export function Providers({ onRefresh }: Props) {
                       Scanned from <code className="mono">{p.baseUrl}/models</code>
                     </span>
                     <button className="btn btn-sm" onClick={() => rescan(p.name)}>Re-scan</button>
-                    <button className="btn btn-primary btn-sm" onClick={() => importAll(p.name)}>Add All to Catalog</button>
+                    <button className="btn btn-sm" onClick={() => importAll(p.name)}>Star All</button>
                   </div>
                   <div className="scan-model-list">
                     {scan === undefined ? (
@@ -177,18 +185,18 @@ export function Providers({ onRefresh }: Props) {
                     ) : scan.models.length === 0 ? (
                       <div className="empty"><p>No models found upstream.</p></div>
                     ) : (
-                      scan.models.map(m => (
+                      scan.models.map(m => {
+                        const starred = catalogSet.has(`${p.name}:${m.id}`);
+                        return (
                         <div key={m.id} className="scan-model-row">
                           <span className="mono">{m.id}</span>
-                          <span>
-                            {catalogSet.has(`${p.name}:${m.id}`) ? (
-                              <span className="exists-tag">in catalog</span>
-                            ) : (
-                              <button className="btn btn-xs" onClick={() => importOne(p.name, m.id)}>+ Add</button>
-                            )}
-                          </span>
+                          <span
+                            onClick={() => toggleStar(p.name, m.id)}
+                            style={{ cursor: 'pointer', fontSize: 15, userSelect: 'none', color: starred ? 'var(--amber)' : 'var(--border)' }}
+                            title={starred ? 'Unstar' : 'Star'}
+                          >{starred ? '★' : '☆'}</span>
                         </div>
-                      ))
+                      )})
                     )}
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
+  starred?: boolean;
 }
 
 /** A provider + upstream model pair. Used for both model catalog and routing mappings. */

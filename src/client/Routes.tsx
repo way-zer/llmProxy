@@ -61,6 +61,11 @@ export function Routes({ onRefresh }: Props) {
     try { await api.removeMapping(name); toast('Removed'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
+  const removeModel = async (name: string) => {
+    if (!confirm(`Remove "${name}" from catalog?`)) return;
+    try { await api.removeModel(name); toast('Removed from catalog'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+  };
+
   const addFromCatalog = async (name: string, provider: string, modelId: string) => {
     try {
       await api.addMapping(name, provider, modelId);
