@@ -1,14 +1,19 @@
-import {
-  lookupModel, getConfig, saveConfig,
-  addModel, removeModel,
-  addProvider, updateProvider, removeProvider,
-  reloadConfigAsync,
-} from './config';
+import { lookupModel, getConfig } from './config';
 import type { ChatCompletionRequest } from './types';
-import { scanProvider, getCachedScan, invalidateScanCache } from './scanner';
 import { join } from 'node:path';
+import {
+  handleListProviders, handleAddProvider, handleUpdateProvider, handleRemoveProvider,
+  handleScanProvider, handleGetProviderScan,
+  handleImportAll, handleImportOne,
+  handleListModelDefs, handleAddModelDef, handleRemoveModelDef,
+  handleListMappings, handleAddMapping, handleUpdateMapping, handleRemoveMapping,
+  handleTestModel,
+  handleReload,
+} from './admin';
 
 const PUBLIC_DIR = join(import.meta.dir, '..', 'public');
+
+// ─── Server ─────────────────────────────────────────────────
 
 export function startProxy(port: number): ReturnType<typeof Bun.serve> {
   const server = Bun.serve({
@@ -18,421 +23,177 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       const path = url.pathname;
       const method = request.method;
 
-      const corsHeaders: Record<string, string> = {
+      const cors: Record<string, string> = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
       };
 
-      if (method === 'OPTIONS') {
-        return new Response(null, { status: 204, headers: corsHeaders });
-      }
+      if (method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
 
       // Dashboard
       if ((path === '/' || path === '/admin') && method === 'GET') {
-        return await serveStatic('index.html', corsHeaders);
+        return await serveStatic('index.html', cors);
       }
 
       // OpenAI-compatible
-      if (path === '/v1/models' && method === 'GET') {
-        return handleListModels(corsHeaders);
-      }
-      if (path === '/v1/chat/completions' && method === 'POST') {
-        return handleChatCompletion(request, corsHeaders);
-      }
+      if (path === '/v1/models' && method === 'GET') return listClientModels(cors);
+      if (path === '/v1/chat/completions' && method === 'POST') return proxyChat(request, cors);
 
       // Health
-      if (path === '/api/health' || path === '/health') {
-        return handleHealth(corsHeaders);
+      if (path === '/api/health' || path === '/health') return health(cors);
+
+      // Providers
+      if (path === '/api/providers' && method === 'GET') return handleListProviders(cors);
+      if (path === '/api/providers' && method === 'POST') return handleAddProvider(request, cors);
+      const pm = path.match(/^\/api\/providers\/([^/]+)$/);
+      if (pm) {
+        const n = decodeURIComponent(pm[1]!);
+        if (method === 'DELETE') return handleRemoveProvider(n, cors);
+        if (method === 'PUT') return handleUpdateProvider(n, request, cors);
+      }
+      const psm = path.match(/^\/api\/providers\/([^/]+)\/scan$/);
+      if (psm) {
+        const n = decodeURIComponent(psm[1]!);
+        if (method === 'GET') return handleGetProviderScan(n, cors);
+        if (method === 'POST') return handleScanProvider(n, cors);
+      }
+      const pia = path.match(/^\/api\/providers\/([^/]+)\/import-all$/);
+      if (pia && method === 'POST') return handleImportAll(decodeURIComponent(pia[1]!), cors);
+      const pio = path.match(/^\/api\/providers\/([^/]+)\/import\/(.+)$/);
+      if (pio && method === 'POST') return handleImportOne(decodeURIComponent(pio[1]!), decodeURIComponent(pio[2]!), cors);
+
+      // Models
+      if (path === '/api/models' && method === 'GET') return handleListModelDefs(cors);
+      if (path === '/api/models' && method === 'POST') return handleAddModelDef(request, cors);
+      if (path.startsWith('/api/models/') && method === 'DELETE') return handleRemoveModelDef(decodeURIComponent(path.slice('/api/models/'.length)), cors);
+
+      // Mappings
+      if (path === '/api/mappings' && method === 'GET') return handleListMappings(cors);
+      if (path === '/api/mappings' && method === 'POST') return handleAddMapping(request, cors);
+      const mm = path.match(/^\/api\/mappings\/([^/]+)$/);
+      if (mm) {
+        const n = decodeURIComponent(mm[1]!);
+        if (method === 'DELETE') return handleRemoveMapping(n, cors);
+        if (method === 'PUT') return handleUpdateMapping(n, request, cors);
       }
 
-      // Providers CRUD
-      if (path === '/api/providers' && method === 'GET') {
-        return handleListProviders(corsHeaders);
-      }
-      if (path === '/api/providers' && method === 'POST') {
-        return handleAddProvider(request, corsHeaders);
-      }
-
-      // Provider by name
-      const provMatch = path.match(/^\/api\/providers\/([^/]+)$/);
-      if (provMatch) {
-        const name = decodeURIComponent(provMatch[1]!);
-        if (method === 'DELETE') return handleRemoveProvider(name, corsHeaders);
-        if (method === 'PUT') return handleUpdateProvider(name, request, corsHeaders);
-      }
-
-      // Provider scan / import
-      const provScanMatch = path.match(/^\/api\/providers\/([^/]+)\/scan$/);
-      if (provScanMatch) {
-        const name = decodeURIComponent(provScanMatch[1]!);
-        if (method === 'GET') return handleGetProviderScan(name, corsHeaders);
-        if (method === 'POST') return handleScanProvider(name, corsHeaders);
-      }
-
-      const provImportAll = path.match(/^\/api\/providers\/([^/]+)\/import-all$/);
-      if (provImportAll && method === 'POST') {
-        return handleImportAll(decodeURIComponent(provImportAll[1]!), corsHeaders);
-      }
-
-      const provImportOne = path.match(/^\/api\/providers\/([^/]+)\/import\/(.+)$/);
-      if (provImportOne && method === 'POST') {
-        return handleImportOne(decodeURIComponent(provImportOne[1]!), decodeURIComponent(provImportOne[2]!), corsHeaders);
-      }
-
-      // Model test endpoint
-      if (path.startsWith('/api/test/') && method === 'POST') {
-        const modelName = decodeURIComponent(path.slice('/api/test/'.length));
-        return handleTestModel(modelName, corsHeaders);
-      }
-
-      // Models CRUD
-      if (path === '/api/models' && method === 'GET') {
-        return handleListModelMappings(corsHeaders);
-      }
-      if (path === '/api/models' && method === 'POST') {
-        return handleAddModel(request, corsHeaders);
-      }
-      if (path.startsWith('/api/models/') && method === 'DELETE') {
-        const name = decodeURIComponent(path.slice('/api/models/'.length));
-        return handleRemoveModel(name, corsHeaders);
-      }
+      // Test
+      if (path.startsWith('/api/test/') && method === 'POST') return handleTestModel(decodeURIComponent(path.slice('/api/test/'.length)), cors);
 
       // Reload
-      if (path === '/api/reload' && method === 'POST') {
-        return handleReload(corsHeaders);
-      }
+      if (path === '/api/reload' && method === 'POST') return handleReload(cors);
 
-      // Legacy scan endpoints
-      if (path.startsWith('/api/scan/') && method === 'POST') {
-        return handleScanProvider(decodeURIComponent(path.slice('/api/scan/'.length)), corsHeaders);
-      }
-      if (path.startsWith('/api/scan-add/') && method === 'POST') {
-        return handleImportAll(decodeURIComponent(path.slice('/api/scan-add/'.length)), corsHeaders);
-      }
+      // Legacy scan
+      if (path.startsWith('/api/scan/') && method === 'POST') return handleScanProvider(decodeURIComponent(path.slice('/api/scan/'.length)), cors);
+      if (path.startsWith('/api/scan-add/') && method === 'POST') return handleImportAll(decodeURIComponent(path.slice('/api/scan-add/'.length)), cors);
 
-      // Static files
+      // Static
       if (method === 'GET' && path !== '/') {
-        const file = path.slice(1);
-        if (!file.startsWith('api/') && !file.startsWith('v1/')) {
-          return await serveStatic(file, corsHeaders);
-        }
+        const f = path.slice(1);
+        if (!f.startsWith('api/') && !f.startsWith('v1/')) return await serveStatic(f, cors);
       }
 
-      return new Response('Not Found', { status: 404, headers: corsHeaders });
+      return new Response('Not Found', { status: 404, headers: cors });
     },
-
-    error(error) {
-      console.error('[proxy] Server error:', error);
+    error(err) {
+      console.error('[proxy]', err);
       return new Response(JSON.stringify({ error: { message: 'Internal server error' } }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        status: 500, headers: { 'Content-Type': 'application/json' },
       });
     },
   });
-
-  console.log(`[proxy] Listening on http://localhost:${server.port}`);
+  console.log(`[proxy] http://localhost:${server.port}`);
   return server;
 }
 
-// ─── Static files ──────────────────────────────────────────
+// ─── Static files ───────────────────────────────────────────
 
-async function serveStatic(filePath: string, corsHeaders: Record<string, string>): Promise<Response> {
-  // Prevent directory traversal
-  if (filePath.includes('..') || filePath.startsWith('/')) {
-    return new Response('Forbidden', { status: 403, headers: corsHeaders });
-  }
-  const fullPath = join(PUBLIC_DIR, filePath);
-  const file = Bun.file(fullPath);
-  if (!(await file.exists())) {
-    return new Response('Not Found', { status: 404, headers: corsHeaders });
-  }
+async function serveStatic(filePath: string, cors: Record<string, string>): Promise<Response> {
+  if (filePath.includes('..') || filePath.startsWith('/')) return new Response('Forbidden', { status: 403, headers: cors });
+  const f = Bun.file(join(PUBLIC_DIR, filePath));
+  if (!(await f.exists())) return new Response('Not Found', { status: 404, headers: cors });
+  const mime: Record<string, string> = { html: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8', js: 'application/javascript; charset=utf-8', json: 'application/json', png: 'image/png', svg: 'image/svg+xml', ico: 'image/x-icon' };
   const ext = filePath.split('.').pop() ?? '';
-  const mime: Record<string, string> = {
-    html: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8',
-    js: 'application/javascript; charset=utf-8', json: 'application/json',
-    png: 'image/png', svg: 'image/svg+xml', ico: 'image/x-icon',
-  };
-  return new Response(file.stream(), {
-    headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream', ...corsHeaders },
-  });
+  return new Response(f.stream(), { headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream', ...cors } });
 }
 
-// ─── Health ────────────────────────────────────────────────
+// ─── Health ─────────────────────────────────────────────────
 
-function handleHealth(corsHeaders: Record<string, string>): Response {
-  const cfg = getConfig();
-  return json({ status: 'ok', models: Object.keys(cfg.models).length, providers: Object.keys(cfg.providers).length, port: cfg.port }, corsHeaders);
+function health(cors: Record<string, string>): Response {
+  const c = getConfig();
+  return json({ status: 'ok', models: Object.keys(c.models).length, mappings: Object.keys(c.mappings).length, providers: Object.keys(c.providers).length, port: c.port }, cors);
 }
 
-// ─── Providers ─────────────────────────────────────────────
+// ─── OpenAI-compatible model list ───────────────────────────
 
-function handleListProviders(corsHeaders: Record<string, string>): Response {
-  const cfg = getConfig();
-  const list = Object.entries(cfg.providers).map(([name, p]) => {
-    const scan = getCachedScan(name);
-    return {
-      name, baseUrl: p.baseUrl,
-      apiKey: p.apiKey ? p.apiKey.slice(0, 6) + '...' + p.apiKey.slice(-4) : '',
-      hasFullKey: !!p.apiKey,
-      modelCount: Object.values(cfg.models).filter(m => m.provider === name).length,
-      scanStatus: scan ? (scan.error ? 'error' : 'ok') : 'pending',
-      scanError: scan?.error ?? null,
-      scanModelCount: scan?.models?.length ?? 0,
-      scannedAt: scan?.scannedAt ?? null,
-    };
-  });
-  return json(list, corsHeaders);
-}
-
-async function handleAddProvider(request: Request, corsHeaders: Record<string, string>): Promise<Response> {
-  try {
-    const { name, baseUrl, apiKey } = await request.json();
-    if (!name || !baseUrl) return json({ error: 'name and baseUrl are required' }, corsHeaders, 400);
-    addProvider(name, baseUrl, apiKey ?? '');
-    await saveConfig();
-    scanProvider(name).then(r => {
-      console.log(`[proxy] Auto-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`);
-    }).catch(() => {});
-    return json({ success: true, name }, corsHeaders);
-  } catch {
-    return json({ error: 'Invalid JSON body' }, corsHeaders, 400);
+function listClientModels(cors: Record<string, string>): Response {
+  const c = getConfig();
+  const seen = new Set<string>();
+  const data: Array<{ id: string; object: string; created: number; owned_by: string }> = [];
+  for (const [name, m] of Object.entries(c.mappings)) {
+    data.push({ id: name, object: 'model', created: 0, owned_by: m.provider });
+    seen.add(name);
   }
-}
-
-async function handleUpdateProvider(name: string, request: Request, corsHeaders: Record<string, string>): Promise<Response> {
-  try {
-    const { baseUrl, apiKey } = await request.json();
-    if (!baseUrl) return json({ error: 'baseUrl is required' }, corsHeaders, 400);
-    if (!updateProvider(name, baseUrl, apiKey ?? '')) {
-      return json({ error: `Provider '${name}' not found` }, corsHeaders, 404);
-    }
-    await saveConfig();
-    invalidateScanCache(name);
-    scanProvider(name).then(r => {
-      console.log(`[proxy] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`);
-    }).catch(() => {});
-    return json({ success: true, name }, corsHeaders);
-  } catch {
-    return json({ error: 'Invalid JSON body' }, corsHeaders, 400);
+  for (const [name, m] of Object.entries(c.models)) {
+    if (!seen.has(name)) data.push({ id: name, object: 'model', created: 0, owned_by: m.provider });
   }
+  return json({ object: 'list', data }, cors);
 }
 
-async function handleRemoveProvider(name: string, corsHeaders: Record<string, string>): Promise<Response> {
-  if (removeProvider(name)) {
-    invalidateScanCache(name);
-    await saveConfig();
-    return json({ success: true, name }, corsHeaders);
-  }
-  return json({ error: `Provider '${name}' not found` }, corsHeaders, 404);
-}
+// ─── Chat completion proxy ──────────────────────────────────
 
-// ─── Scan / Import ─────────────────────────────────────────
-
-async function handleScanProvider(name: string, corsHeaders: Record<string, string>): Promise<Response> {
-  const r = await scanProvider(name);
-  return json(r, corsHeaders, r.error ? 400 : 200);
-}
-
-function handleGetProviderScan(name: string, corsHeaders: Record<string, string>): Response {
-  const cached = getCachedScan(name);
-  if (!cached) return json({ error: `No scan cached for '${name}'` }, corsHeaders, 404);
-  return json(cached, corsHeaders);
-}
-
-async function handleImportAll(providerName: string, corsHeaders: Record<string, string>): Promise<Response> {
-  let scan = getCachedScan(providerName);
-  if (!scan || scan.error) {
-    scan = await scanProvider(providerName);
-    if (scan.error) return json({ error: scan.error }, corsHeaders, 400);
-  }
-  const cfg = getConfig();
-  if (!cfg.providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
-  let added = 0, skipped = 0;
-  for (const m of scan.models) {
-    if (cfg.models[m.id]) { skipped++; continue; }
-    addModel(m.id, providerName, m.id);
-    added++;
-  }
-  saveConfig();
-  return json({ success: true, providerName, total: scan.models.length, added, skipped }, corsHeaders);
-}
-
-async function handleImportOne(providerName: string, upstreamModelId: string, corsHeaders: Record<string, string>): Promise<Response> {
-  if (!getConfig().providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
-  addModel(upstreamModelId, providerName, upstreamModelId);
-  await saveConfig();
-  return json({ success: true, name: upstreamModelId, provider: providerName }, corsHeaders);
-}
-
-// ─── Models ────────────────────────────────────────────────
-
-function handleListModelMappings(corsHeaders: Record<string, string>): Response {
-  return json(Object.entries(getConfig().models).map(([n, m]) => ({ name: n, provider: m.provider, modelId: m.modelId })), corsHeaders);
-}
-
-async function handleAddModel(request: Request, corsHeaders: Record<string, string>): Promise<Response> {
-  try {
-    const { name, provider, modelId } = await request.json();
-    if (!name || !provider) return json({ error: 'name and provider are required' }, corsHeaders, 400);
-    if (!getConfig().providers[provider]) return json({ error: `Provider '${provider}' not found` }, corsHeaders, 400);
-    addModel(name, provider, modelId ?? name);
-    await saveConfig();
-    return json({ success: true, name }, corsHeaders);
-  } catch {
-    return json({ error: 'Invalid JSON body' }, corsHeaders, 400);
-  }
-}
-
-async function handleRemoveModel(name: string, corsHeaders: Record<string, string>): Promise<Response> {
-  if (removeModel(name)) { await saveConfig(); return json({ success: true, name }, corsHeaders); }
-  return json({ error: `Model '${name}' not found` }, corsHeaders, 404);
-}
-
-// ─── Model test ────────────────────────────────────────────
-
-async function handleTestModel(modelName: string, corsHeaders: Record<string, string>): Promise<Response> {
-  const upstream = lookupModel(modelName);
-  if (!upstream) {
-    return json({ error: `Model '${modelName}' not found` }, corsHeaders, 404);
-  }
-
-  const upstreamUrl = `${upstream.provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  const testBody = {
-    model: upstream.upstreamModelId,
-    messages: [{ role: 'user', content: 'Hi' }],
-    max_tokens: 50,
-    stream: false,
-  };
-
-  const start = performance.now();
-  try {
-    const res = await fetch(upstreamUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstream.provider.apiKey}` },
-      body: JSON.stringify(testBody),
-    });
-    const latencyMs = Math.round(performance.now() - start);
-    const text = await res.text();
-
-    if (!res.ok) {
-      return json({
-        modelName,
-        latencyMs,
-        statusCode: res.status,
-        ok: false,
-        error: text.slice(0, 300),
-      }, corsHeaders);
-    }
-
-    // Extract a short preview from the response
-    let preview = '';
-    try {
-      const parsed = JSON.parse(text);
-      preview = parsed.choices?.[0]?.message?.content?.slice(0, 200) ?? text.slice(0, 200);
-    } catch {
-      preview = text.slice(0, 200);
-    }
-
-    return json({
-      modelName,
-      latencyMs,
-      statusCode: res.status,
-      ok: true,
-      preview,
-    }, corsHeaders);
-  } catch (err) {
-    const latencyMs = Math.round(performance.now() - start);
-    const msg = err instanceof Error ? err.message : String(err);
-    return json({ modelName, latencyMs, ok: false, error: msg }, corsHeaders);
-  }
-}
-
-// ─── Reload ────────────────────────────────────────────────
-
-async function handleReload(corsHeaders: Record<string, string>): Promise<Response> {
-  const cfg = await reloadConfigAsync();
-  invalidateScanCache();
-  return json({ success: true, models: Object.keys(cfg.models).length, providers: Object.keys(cfg.providers).length }, corsHeaders);
-}
-
-// ─── OpenAI-compatible ─────────────────────────────────────
-
-function handleListModels(corsHeaders: Record<string, string>): Response {
-  const data = Object.entries(getConfig().models).map(([name, m]) => ({
-    id: name, object: 'model', created: 0, owned_by: m.provider,
-  }));
-  return json({ object: 'list', data }, corsHeaders);
-}
-
-// ─── Chat proxy ────────────────────────────────────────────
-
-async function handleChatCompletion(request: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function proxyChat(request: Request, cors: Record<string, string>): Promise<Response> {
   let body: ChatCompletionRequest;
   try { body = await request.json(); } catch {
-    return json({ error: { message: 'Invalid JSON body' } }, corsHeaders, 400);
+    return json({ error: { message: 'Invalid JSON body' } }, cors, 400);
   }
-  const modelId = body.model;
-  if (!modelId) return json({ error: { message: "Missing 'model' field" } }, corsHeaders, 400);
+  if (!body.model) return json({ error: { message: "Missing 'model' field" } }, cors, 400);
 
-  const upstream = lookupModel(modelId);
+  const upstream = lookupModel(body.model);
   if (!upstream) {
-    const avail = Object.keys(getConfig().models).join(', ') || 'none';
-    return json({ error: { message: `Model '${modelId}' not configured. Available: ${avail}`, type: 'model_not_found' } }, corsHeaders, 404);
+    const names = [...Object.keys(getConfig().mappings), ...Object.keys(getConfig().models)];
+    const avail = [...new Set(names)].join(', ') || 'none';
+    return json({ error: { message: `Model '${body.model}' not found. Available: ${avail}`, type: 'model_not_found' } }, cors, 404);
   }
 
-  const upstreamUrl = `${upstream.provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  console.log(`[proxy] -> ${modelId} -> ${upstream.provider.baseUrl} (${upstream.upstreamModelId})`);
+  const url = `${upstream.provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
+  console.log(`[proxy] → ${body.model} → ${upstream.provider.baseUrl} (${upstream.upstreamModelId})`);
 
   try {
-    const upstreamResponse = await fetch(upstreamUrl, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstream.provider.apiKey}` },
       body: JSON.stringify({ ...body, model: upstream.upstreamModelId }),
     });
-
-    if (!upstreamResponse.ok) {
-      const errorText = await upstreamResponse.text();
-      console.error(`[proxy] Upstream error ${upstreamResponse.status}: ${errorText.slice(0, 200)}`);
-      return new Response(errorText, {
-        status: upstreamResponse.status,
-        headers: { 'Content-Type': upstreamResponse.headers.get('Content-Type') ?? 'application/json', ...corsHeaders },
-      });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[proxy] Upstream ${res.status}: ${errText.slice(0, 200)}`);
+      return new Response(errText, { status: res.status, headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json', ...cors } });
     }
-
     if (body.stream) {
-      const reader = upstreamResponse.body?.getReader();
-      if (!reader) return json({ error: { message: 'Upstream returned empty body' } }, corsHeaders, 502);
+      const reader = res.body?.getReader();
+      if (!reader) return json({ error: { message: 'Empty upstream body' } }, cors, 502);
       const stream = new ReadableStream({
-        async start(controller) {
-          try {
-            while (true) { const { done, value } = await reader.read(); if (done) break; controller.enqueue(value); }
-            controller.close();
-          } catch (err) { console.error('[proxy] Stream error:', err); controller.error(err); }
+        async start(ctrl) {
+          try { while (true) { const { done, value } = await reader.read(); if (done) break; ctrl.enqueue(value); } ctrl.close(); }
+          catch (e) { console.error('[proxy] stream:', e); ctrl.error(e); }
           finally { reader.releaseLock(); }
         },
       });
-      return new Response(stream, {
-        status: upstreamResponse.status,
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...corsHeaders },
-      });
+      return new Response(stream, { status: res.status, headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...cors } });
     }
-
-    const responseBody = await upstreamResponse.text();
-    return new Response(responseBody, {
-      status: upstreamResponse.status,
-      headers: { 'Content-Type': upstreamResponse.headers.get('Content-Type') ?? 'application/json', ...corsHeaders },
-    });
+    const text = await res.text();
+    return new Response(text, { status: res.status, headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json', ...cors } });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[proxy] Fetch error: ${msg}`);
-    return json({ error: { message: `Upstream connection failed: ${msg}` } }, corsHeaders, 502);
+    console.error(`[proxy] fetch: ${msg}`);
+    return json({ error: { message: `Upstream connection failed: ${msg}` } }, cors, 502);
   }
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Helper ─────────────────────────────────────────────────
 
 function json(data: unknown, headers: Record<string, string>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
-

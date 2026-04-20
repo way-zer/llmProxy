@@ -1,12 +1,13 @@
-import type { AppConfig, ModelMapping, ProviderConfig } from "./types";
-import { join } from "node:path";
+import type { AppConfig, ProviderConfig } from './types';
+import { join } from 'node:path';
 
-const CONFIG_PATH = join(import.meta.dir, "..", "config.json");
+const CONFIG_PATH = join(import.meta.dir, '..', 'config.json');
 
 let config: AppConfig = {
   port: 3000,
   providers: {},
   models: {},
+  mappings: {},
 };
 
 export function getConfig(): Readonly<AppConfig> {
@@ -22,13 +23,10 @@ export async function loadConfig(): Promise<AppConfig> {
   if (await file.exists()) {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
+    if (!config.mappings) config.mappings = {};
   } else {
-    console.log(`[config] No config.json found at ${CONFIG_PATH}, using defaults`);
-    config = {
-      port: 3000,
-      providers: {},
-      models: {},
-    };
+    console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
+    config = { port: 3000, providers: {}, models: {}, mappings: {} };
     await saveConfig();
   }
   return config;
@@ -44,22 +42,13 @@ export async function reloadConfigAsync(): Promise<AppConfig> {
   if (await file.exists()) {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
-    console.log("[config] Configuration reloaded from disk");
+    if (!config.mappings) config.mappings = {};
+    console.log('[config] Reloaded from disk');
   }
   return config;
 }
 
-export function addModel(mappingName: string, provider: string, modelId: string): void {
-  config.models[mappingName] = { provider, modelId };
-}
-
-export function removeModel(mappingName: string): boolean {
-  if (config.models[mappingName]) {
-    delete config.models[mappingName];
-    return true;
-  }
-  return false;
-}
+// ─── Providers ──────────────────────────────────────────────
 
 export function addProvider(name: string, baseUrl: string, apiKey: string): void {
   config.providers[name] = { baseUrl, apiKey };
@@ -72,34 +61,64 @@ export function updateProvider(name: string, baseUrl: string, apiKey: string): b
 }
 
 export function removeProvider(name: string): boolean {
-  if (config.providers[name]) {
-    // Also remove all model mappings that use this provider
-    const modelsToRemove: string[] = [];
-    for (const [modelName, mapping] of Object.entries(config.models)) {
-      if (mapping.provider === name) {
-        modelsToRemove.push(modelName);
-      }
-    }
-    for (const modelName of modelsToRemove) {
-      delete config.models[modelName];
-    }
-    delete config.providers[name];
-    return true;
+  if (!config.providers[name]) return false;
+  for (const [mn, m] of Object.entries(config.models)) {
+    if (m.provider === name) delete config.models[mn];
   }
-  return false;
+  for (const [kn, m] of Object.entries(config.mappings)) {
+    if (m.provider === name) delete config.mappings[kn];
+  }
+  delete config.providers[name];
+  return true;
 }
 
-export function lookupModel(modelId: string): { provider: ProviderConfig; upstreamModelId: string } | null {
-  const mapping = config.models[modelId];
-  if (!mapping) {
-    return null;
+// ─── Model definitions (收藏的上游模型) ───────────────────────
+
+export function addModelDef(name: string, provider: string, modelId: string): void {
+  config.models[name] = { provider, modelId };
+}
+
+export function removeModelDef(name: string): boolean {
+  if (!config.models[name]) return false;
+  delete config.models[name];
+  return true;
+}
+
+// ─── Mappings (客户端路由表, id → provider/model) ──────────────
+
+export function addMapping(name: string, provider: string, modelId: string): boolean {
+  if (!config.providers[provider]) return false;
+  config.mappings[name] = { provider, modelId };
+  return true;
+}
+
+export function updateMapping(name: string, provider: string, modelId: string): boolean {
+  if (!config.mappings[name]) return false;
+  if (!config.providers[provider]) return false;
+  config.mappings[name] = { provider, modelId };
+  return true;
+}
+
+export function removeMapping(name: string): boolean {
+  if (!config.mappings[name]) return false;
+  delete config.mappings[name];
+  return true;
+}
+
+// ─── Lookup (mapping → provider, fallback model → provider) ───
+
+export function lookupModel(clientName: string): { provider: ProviderConfig; upstreamModelId: string } | null {
+  // Check routing mappings first
+  const mapping = config.mappings[clientName];
+  if (mapping) {
+    const provider = config.providers[mapping.provider];
+    if (provider) return { provider, upstreamModelId: mapping.modelId };
   }
-  const provider = config.providers[mapping.provider];
-  if (!provider) {
-    return null;
+  // Fall back to model catalog
+  const def = config.models[clientName];
+  if (def) {
+    const provider = config.providers[def.provider];
+    if (provider) return { provider, upstreamModelId: def.modelId };
   }
-  return {
-    provider,
-    upstreamModelId: mapping.modelId,
-  };
+  return null;
 }

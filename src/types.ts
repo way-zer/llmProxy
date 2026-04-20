@@ -3,15 +3,20 @@ export interface ProviderConfig {
   apiKey: string;
 }
 
-export interface ModelMapping {
+/** A provider + upstream model pair. Used for both model catalog and routing mappings. */
+export interface ModelDef {
   provider: string;
   modelId: string;
 }
 
+
 export interface AppConfig {
   port: number;
   providers: Record<string, ProviderConfig>;
-  models: Record<string, ModelMapping>;
+  /** Model catalog — saved upstream model references */
+  models: Record<string, ModelDef>;
+  /** Routing mappings — client-facing names → provider/model. Can be quickly switched. */
+  mappings: Record<string, ModelDef>;
 }
 
 export interface ChatCompletionRequest {
