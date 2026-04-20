@@ -53,13 +53,15 @@ export function Routes({ onRefresh }: Props) {
   };
 
   const addRoute = async (name: string, provider: string, modelId: string) => {
-    if (mappings.some(m => m.name === name)) {
-      toast(`"${name}" already routed`, 'error');
-      return;
-    }
+    const exists = mappings.some(m => m.name === name);
     try {
-      await api.addMapping(name, provider, modelId);
-      toast(`"${name}" added to routes`);
+      if (exists) {
+        await api.updateMapping(name, provider, modelId);
+        toast(`"${name}" updated`);
+      } else {
+        await api.addMapping(name, provider, modelId);
+        toast(`"${name}" added to routes`);
+      }
       load();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
@@ -108,7 +110,9 @@ export function Routes({ onRefresh }: Props) {
                       {!routed && (
                         <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>
                       )}
-                      {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}
+                      {routed && (
+                        <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Replace</button>
+                      )}
                       <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)}>Remove</button>
                     </td>
                   </tr>
