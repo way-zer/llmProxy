@@ -154,13 +154,6 @@ export function Routes({ onRefresh }: Props) {
                   </tr>
                 );
               })}
-                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
-                    <td style={{ textAlign: 'right' }}>
-                      <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>
-                    </td>
-                  </tr>
-                );
-              })}
             </tbody>
           </table>
         )}
