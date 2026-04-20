@@ -1,5 +1,4 @@
 import { lookupModel, getConfig } from './config';
-import type { ChatCompletionRequest } from './types';
 import { join } from 'node:path';
 import {
   handleListProviders, handleAddProvider, handleUpdateProvider, handleRemoveProvider,
@@ -28,7 +27,8 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       '/health': { GET: () => health() },
       '/api/health': { GET: () => health() },
       '/v1/models': { GET: () => clientModels() },
-      '/v1/chat/completions': { POST: proxyChat },
+      '/v1/chat/completions': { POST: req => proxyOpenAI('chat/completions', req) },
+      '/v1/responses': { POST: req => proxyOpenAI('responses', req) },
 
       '/api/providers': {
         GET: () => handleListProviders(CORS),
@@ -117,10 +117,10 @@ function clientModels(): Response {
   return json({ object: 'list', data });
 }
 
-async function proxyChat(req: Request): Promise<Response> {
-  let body: ChatCompletionRequest;
+async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
+  let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: { message: 'Invalid JSON body' } }, 400); }
-  if (!body.model) return json({ error: { message: "Missing 'model' field" } }, 400);
+  if (!body.model || typeof body.model !== 'string') return json({ error: { message: "Missing 'model' field" } }, 400);
 
   const upstream = lookupModel(body.model);
   if (!upstream) {
@@ -128,8 +128,8 @@ async function proxyChat(req: Request): Promise<Response> {
     return json({ error: { message: `Model '${body.model}' not found. Available: ${[...new Set(names)].join(', ') || 'none'}`, type: 'model_not_found' } }, 404);
   }
 
-  const target = `${upstream.provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
-  console.log(`[proxy] → ${body.model} → ${upstream.provider.baseUrl} (${upstream.upstreamModelId})`);
+  const target = `${upstream.provider.baseUrl.replace(/\/$/, '')}/${endpoint}`;
+  console.log(`[proxy] → ${body.model} → ${upstream.provider.baseUrl} (${upstream.upstreamModelId}) [${endpoint}]`);
 
   try {
     const res = await fetch(target, {
