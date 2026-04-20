@@ -199,6 +199,7 @@
 <script>
 const $ = (s, p) => (p || document).querySelector(s);
 const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
+const C = CSS.escape; // escape dynamic values in CSS selectors
 
 // Tabs
 $$('.tab').forEach(t => t.addEventListener('click', () => {
@@ -309,7 +310,7 @@ async function refreshProviders() {
 }
 
 async function loadScanResults(providerName) {
-  const list = $(`#scanlist-${providerName}`);
+  const list = $(`#scanlist-${C(providerName)}`);
   if (!list) return;
   try {
     const scan = await api('GET', `/api/providers/${encodeURIComponent(providerName)}/scan`);
@@ -344,7 +345,7 @@ async function loadScanResults(providerName) {
 }
 
 function updateScanBadge(name, status, count, error) {
-  const card = $(`#pcard-${name}`);
+  const card = $(`#pcard-${C(name)}`);
   if (!card) return;
   const badge = card.querySelector('.meta .badge');
   if (!badge) return;
@@ -360,11 +361,11 @@ function updateScanBadge(name, status, count, error) {
 }
 
 function toggleProvider(name) {
-  $(`#pcard-${name}`).classList.toggle('expanded');
+  $(`#pcard-${C(name)}`).classList.toggle('expanded');
 }
 
 async function rescanProvider(name) {
-  const list = $(`#scanlist-${name}`);
+  const list = $(`#scanlist-${C(name)}`);
   if (list) list.innerHTML = '<div class="empty"><p>Scanning...</p></div>';
   try {
     await api('POST', `/api/providers/${encodeURIComponent(name)}/scan`);
@@ -397,7 +398,7 @@ async function refreshProvidersQuick() {
   const d = await api('GET', '/api/providers');
   refreshStats(); refreshSelects();
   d.forEach(p => {
-    const card = $(`#pcard-${p.name}`);
+    const card = $(`#pcard-${C(p.name)}`);
     if (!card) return;
     const badge = card.querySelector('.meta .badge-provider');
     if (p.modelCount > 0) {
@@ -517,7 +518,7 @@ window.removeModel = async (name) => {
 };
 
 window.testModel = async (name) => {
-  const cell = $(`#lat-${name}`);
+  const cell = $(`#lat-${C(name)}`);
   if (!cell) return;
   cell.innerHTML = '<span style="color:var(--text2);font-size:12px">...</span>';
   try {

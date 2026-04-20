@@ -30,7 +30,7 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
 
       // Dashboard
       if ((path === '/' || path === '/admin') && method === 'GET') {
-        return serveStatic('index.html', corsHeaders);
+        return await serveStatic('index.html', corsHeaders);
       }
 
       // OpenAI-compatible
@@ -115,7 +115,7 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       if (method === 'GET' && path !== '/') {
         const file = path.slice(1);
         if (!file.startsWith('api/') && !file.startsWith('v1/')) {
-          return serveStatic(file, corsHeaders);
+          return await serveStatic(file, corsHeaders);
         }
       }
 
@@ -137,9 +137,16 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
 
 // ─── Static files ──────────────────────────────────────────
 
-function serveStatic(filePath: string, corsHeaders: Record<string, string>): Response {
+async function serveStatic(filePath: string, corsHeaders: Record<string, string>): Promise<Response> {
+  // Prevent directory traversal
+  if (filePath.includes('..') || filePath.startsWith('/')) {
+    return new Response('Forbidden', { status: 403, headers: corsHeaders });
+  }
   const fullPath = join(PUBLIC_DIR, filePath);
   const file = Bun.file(fullPath);
+  if (!(await file.exists())) {
+    return new Response('Not Found', { status: 404, headers: corsHeaders });
+  }
   const ext = filePath.split('.').pop() ?? '';
   const mime: Record<string, string> = {
     html: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8',
