@@ -12,7 +12,6 @@ export function Routes({ onRefresh }: Props) {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [tests, setTests] = useState<Record<string, TestResult | null>>({});
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const [pickModel, setPickModel] = useState('');
 
   const toast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setMsg({ text, type });
@@ -75,13 +74,6 @@ export function Routes({ onRefresh }: Props) {
     try { await api.removeModel(name); toast('Removed from catalog'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
-  const handlePickModel = (val: string) => {
-    setPickModel(val);
-    if (!val) return;
-    const model = models.find(m => m.name === val);
-    if (model) addRoute(model.name, model.provider, model.modelId);
-  };
-
   const routedNames = new Set(mappings.map(m => m.name));
 
   const Latency = ({ name }: { name: string }) => {
@@ -98,22 +90,7 @@ export function Routes({ onRefresh }: Props) {
 
       {/* ── Model Catalog (top) ── */}
       <div className="card">
-        <div className="card-header">
-          <h2>Model Catalog ({models.length})</h2>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 12, color: 'var(--text2)' }}>Add to routes:</span>
-            <select
-              value={pickModel}
-              onChange={e => handlePickModel(e.target.value)}
-              style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', minWidth: 180 }}
-            >
-              <option value="">-- pick a model --</option>
-              {models.filter(m => !routedNames.has(m.name)).map(m => (
-                <option key={m.name} value={m.name}>{m.name} ({m.provider})</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <div className="card-header"><h2>Model Catalog ({models.length})</h2></div>
         {models.length === 0 ? (
           <div className="empty"><p>No models in catalog. Star (★) models from the Providers tab.</p></div>
         ) : (
@@ -121,16 +98,16 @@ export function Routes({ onRefresh }: Props) {
             <thead><tr><th>Name</th><th>Provider</th><th>Upstream</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {models.map(m => {
-                const routed = routedNames.has(m.name);
+                const routed = routedNames.has(m.modelId);
                 return (
                   <tr key={m.name}>
-                    <td className="mono"><b>{m.name}</b></td>
+                    <td className="mono"><b>{m.modelId}</b></td>
                     <td><span className="badge badge-provider">{m.provider}</span></td>
                     <td className="mono">{m.modelId}</td>
-                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
+                    <td style={{ width: 90 }}><Latency name={m.modelId} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {!routed && (
-                        <button className="btn btn-xs" onClick={() => addRoute(m.name, m.provider, m.modelId)}>Add Route</button>
+                        <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>
                       )}
                       {routed && <span className="badge badge-ok" style={{ marginRight: 8 }}>routed</span>}
                       <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)}>Remove</button>
@@ -150,32 +127,33 @@ export function Routes({ onRefresh }: Props) {
           <div className="empty"><p>No routes yet. Add routes from the model catalog above.</p></div>
         ) : (
           <table>
-            <thead><tr><th>Name</th><th>Provider</th><th>Upstream Model</th><th>Latency</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Model</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {mappings.map(m => {
-                const modelOptions = models.filter(c => c.provider === m.provider);
                 return (
                   <tr key={m.name}>
                     <td className="mono"><b>{m.name}</b></td>
-                    <td>
+                    <td colSpan={2}>
                       <select
-                        value={m.provider}
-                        onChange={e => updateMapping(m.name, e.target.value, m.modelId)}
-                        style={selectStyle}
+                        value={`${m.provider}|${m.modelId}`}
+                        onChange={e => {
+                          const [p, mid] = e.target.value.split('|');
+                          updateMapping(m.name, p!, mid!);
+                        }}
+                        style={{ ...selectStyle, width: 240 }}
                       >
-                        {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                        {models.map(c => (
+                          <option key={c.name} value={`${c.provider}|${c.modelId}`}>{c.modelId} ({c.provider})</option>
+                        ))}
                       </select>
                     </td>
-                    <td>
-                      <select
-                        value={m.modelId}
-                        onChange={e => updateMapping(m.name, m.provider, e.target.value)}
-                        style={selectStyle}
-                      >
-                        {modelOptions.length === 0 && <option value={m.modelId}>{m.modelId}</option>}
-                        {modelOptions.map(c => <option key={c.modelId} value={c.modelId}>{c.modelId}</option>)}
-                      </select>
+                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>
                     </td>
+                  </tr>
+                );
+              })}
                     <td style={{ width: 90 }}><Latency name={m.name} /></td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>

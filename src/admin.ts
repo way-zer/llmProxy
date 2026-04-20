@@ -99,8 +99,9 @@ export async function handleImportAll(providerName: string, corsHeaders: Record<
   if (!cfg.providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
   let added = 0, skipped = 0, mapped = 0;
   for (const m of scan.models) {
-    if (cfg.models[m.id]) { skipped++; continue; }
-    addModelDef(m.id, providerName, m.id);
+    const catKey = `${providerName}/${m.id}`;
+    if (cfg.models[catKey]) { skipped++; continue; }
+    addModelDef(catKey, providerName, m.id);
     added++;
     if (!cfg.mappings[m.id]) { addMapping(m.id, providerName, m.id); mapped++; }
   }
@@ -110,7 +111,8 @@ export async function handleImportAll(providerName: string, corsHeaders: Record<
 
 export async function handleImportOne(providerName: string, upstreamModelId: string, corsHeaders: Record<string, string>): Promise<Response> {
   if (!getConfig().providers[providerName]) return json({ error: `Provider '${providerName}' not found` }, corsHeaders, 400);
-  addModelDef(upstreamModelId, providerName, upstreamModelId);
+  const catKey = `${providerName}/${upstreamModelId}`;
+  addModelDef(catKey, providerName, upstreamModelId);
   const mapped = !getConfig().mappings[upstreamModelId];
   if (mapped) addMapping(upstreamModelId, providerName, upstreamModelId);
   await saveConfig();

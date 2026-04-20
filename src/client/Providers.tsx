@@ -112,25 +112,23 @@ export function Providers({ onRefresh }: Props) {
   };
 
   const toggleStar = async (provider: string, modelId: string) => {
-    const key = `${provider}:${modelId}`;
-    const starred = catalogSet.has(key);
-    // Optimistic local update
+    const catKey = `${provider}/${modelId}`;
+    const starred = catalogSet.has(catKey);
     if (starred) {
-      setCatalog(prev => prev.filter(m => !(m.provider === provider && m.name === modelId)));
+      setCatalog(prev => prev.filter(m => m.name !== catKey));
     } else {
-      setCatalog(prev => [...prev, { name: modelId, provider, modelId }]);
+      setCatalog(prev => [...prev, { name: catKey, provider, modelId }]);
     }
-    // Fire API in background
     try {
-      if (starred) await api.removeModel(modelId);
+      if (starred) await api.removeModel(catKey);
       else await api.importOne(provider, modelId);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error');
-      load(); // revert on error
+      load();
     }
   };
 
-  const catalogSet = new Set(catalog.map(m => `${m.provider}:${m.name}`));
+  const catalogSet = new Set(catalog.map(m => m.name));
 
   return (
     <div className="card">
@@ -186,7 +184,7 @@ export function Providers({ onRefresh }: Props) {
                       <div className="empty"><p>No models found upstream.</p></div>
                     ) : (
                       scan.models.map(m => {
-                        const starred = catalogSet.has(`${p.name}:${m.id}`);
+                        const starred = catalogSet.has(`${p.name}/${m.id}`);
                         return (
                         <div key={m.id} className="scan-model-row">
                           <span className="mono">{m.id}</span>
