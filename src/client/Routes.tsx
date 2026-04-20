@@ -38,6 +38,7 @@ export function Routes({ onRefresh }: Props) {
     try {
       const r = await api.test(name);
       setTests(prev => ({ ...prev, [name]: r }));
+    } catch (e) {
       setTests(prev => ({ ...prev, [name]: { modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } }));
     }
   };
