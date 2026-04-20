@@ -110,9 +110,7 @@ export function Routes({ onRefresh }: Props) {
                       {!routed && (
                         <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>
                       )}
-                      {routed && (
-                        <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Replace</button>
-                      )}
+                      {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}
                       <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)}>Remove</button>
                     </td>
                   </tr>
