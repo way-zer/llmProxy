@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>llmProxy — Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0f15; --surface: #141a23; --surface2: #1a2230; --border: #2a3344;
+    --text: #e2e8f0; --text2: #94a3b8; --accent: #6366f1; --accent2: #818cf8;
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+    --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,.4);
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.5; min-height: 100vh;
+  }
+  .header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: center; height: 56px; gap: 24px;
+  }
+  .header h1 { font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+  .header h1 span { color: var(--accent2); }
+  .header-stats { display: flex; gap: 16px; margin-left: auto; font-size: 13px; color: var(--text2); }
+  .header-stats b { color: var(--text); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .tabs { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; }
+  .tab { padding: 12px 20px; font-size: 14px; cursor: pointer; border: none; background: none; color: var(--text2); border-bottom: 2px solid transparent; transition: all .15s; font-family: inherit; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+  .main { padding: 24px; max-width: 1100px; margin: 0 auto; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .card-header h2 { font-size: 16px; font-weight: 600; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 6px; font-size: 13px; font-weight: 500; border: 1px solid var(--border); cursor: pointer; transition: all .15s; background: var(--surface2); color: var(--text); font-family: inherit; }
+  .btn:hover { background: var(--border); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-danger { color: var(--red); border-color: var(--red); background: transparent; }
+  .btn-danger:hover { background: rgba(239,68,68,.1); }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+  .btn-xs { padding: 2px 8px; font-size: 11px; }
+  .btn-icon { padding: 4px 8px; font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; }
+  th { color: var(--text2); font-weight: 500; border-bottom: 1px solid var(--border); }
+  td { border-bottom: 1px solid rgba(42,51,68,.4); }
+  tr:last-child td { border-bottom: none; }
+  .mono { font-family: 'SF Mono','Fira Code',monospace; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+  .badge-ok { background: rgba(34,197,94,.15); color: var(--green); }
+  .badge-err { background: rgba(239,68,68,.15); color: var(--red); }
+  .badge-pending { background: rgba(245,158,11,.15); color: var(--amber); }
+  .badge-provider { background: rgba(99,102,241,.15); color: var(--accent2); }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; font-weight: 500; }
+  .form-group input, .form-group select { width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 13px; font-family: inherit; outline: none; transition: border-color .15s; }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-row { display: flex; gap: 12px; }
+  .form-row .form-group { flex: 1; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; width: 480px; max-width: 90vw; box-shadow: var(--shadow); }
+  .modal h3 { margin-bottom: 16px; font-size: 16px; }
+
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }
+  .toast { padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; animation: slideIn .2s ease; box-shadow: var(--shadow); max-width: 360px; }
+  .toast-success { background: #14532d; color: var(--green); border: 1px solid #22c55e33; }
+  .toast-error { background: #450a0a; color: var(--red); border: 1px solid #ef444433; }
+  @keyframes slideIn { from{transform:translateX(100%);opacity:0} to{transform:translateX(0);opacity:1} }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 14px; }
+  .empty p+p { margin-top: 8px; }
+
+  .provider-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 12px; overflow: hidden; }
+  .provider-card-header { display: flex; align-items: center; padding: 14px 16px; cursor: pointer; gap: 12px; transition: background .15s; }
+  .provider-card-header:hover { background: rgba(255,255,255,.03); }
+  .provider-card-header .name { font-weight: 600; font-size: 14px; flex: 1; }
+  .provider-card-header .meta { display: flex; gap: 12px; align-items: center; font-size: 12px; color: var(--text2); }
+  .provider-card-body { display: none; padding: 0 16px 16px; border-top: 1px solid var(--border); }
+  .provider-card.expanded .provider-card-body { display: block; }
+  .provider-card.expanded .provider-card-header { border-bottom: 1px solid var(--border); }
+
+  .scan-model-list { max-height: 300px; overflow-y: auto; margin-top: 12px; }
+  .scan-model-row { display: flex; align-items: center; justify-content: space-between; padding: 5px 8px; border-radius: 4px; font-size: 13px; }
+  .scan-model-row:hover { background: rgba(255,255,255,.04); }
+  .scan-model-row .exists-tag { color: var(--text2); font-size: 11px; }
+
+  .quick-add { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 20px; }
+  .quick-add .form-group { margin-bottom: 0; min-width: 140px; }
+
+  .expand-icon { transition: transform .2s; font-size: 10px; color: var(--text2); }
+  .provider-card.expanded .expand-icon { transform: rotate(90deg); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>llm</span>Proxy</h1>
+  <nav class="header-stats">
+    <span><span class="status-dot"></span>running</span>
+    <span id="stat-models">Models: <b>0</b></span>
+    <span id="stat-providers">Providers: <b>0</b></span>
+    <span>Port: <b id="stat-port">3000</b></span>
+  </nav>
+</div>
+
+<div class="tabs">
+  <button class="tab active" data-panel="panel-overview">Overview</button>
+  <button class="tab" data-panel="panel-providers">Providers</button>
+  <button class="tab" data-panel="panel-models">Models</button>
+</div>
+
+<div class="main">
+
+  <!-- OVERVIEW -->
+  <div class="panel active" id="panel-overview">
+    <div class="card">
+      <div class="card-header"><h2>Endpoints</h2></div>
+      <table>
+        <tr><td style="width:60px"><span class="badge badge-provider">POST</span></td><td class="mono">/v1/chat/completions</td><td>OpenAI-compatible proxy</td></tr>
+        <tr><td style="width:60px"><span class="badge badge-provider">GET</span></td><td class="mono">/v1/models</td><td>List configured models</td></tr>
+        <tr><td style="width:60px"><span class="badge badge-provider">GET</span></td><td class="mono">/api/health</td><td>Health check</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Quick Start</h2></div>
+      <ol style="padding-left:20px;font-size:13px;color:var(--text2);line-height:2;">
+        <li>Go to <b>Providers</b> &rarr; add upstream APIs (OpenAI, Ollama, etc.)</li>
+        <li>Expand a provider to see scanned models &rarr; add the ones you need</li>
+        <li>Point clients to <code class="mono" style="color:var(--accent2)">http://localhost:3000/v1</code></li>
+      </ol>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Example</h2></div>
+      <pre style="background:var(--surface2);border-radius:6px;padding:16px;font-size:12px;overflow-x:auto;"><code>curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"gpt-4o","messages":[{"role":"user","content":"Hi"}]}'</code></pre>
+    </div>
+  </div>
+
+  <!-- PROVIDERS -->
+  <div class="panel" id="panel-providers">
+    <div class="card">
+      <div class="card-header">
+        <h2>Upstream Providers</h2>
+        <button class="btn btn-primary" onclick="openModal('modal-provider')">+ Add Provider</button>
+      </div>
+      <div id="providers-list">
+        <div class="empty"><p>No providers configured.</p><p>Add one to get started &mdash; models auto-scan on add.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODELS -->
+  <div class="panel" id="panel-models">
+    <div class="quick-add card">
+      <div class="form-group"><label>Model Name</label><input id="q-name" placeholder="e.g. gpt-4o" style="width:180px"></div>
+      <div class="form-group"><label>Provider</label><select id="q-provider"><option value="">-- select --</option></select></div>
+      <div class="form-group"><label>Upstream ID <small>(optional)</small></label><input id="q-upstream" placeholder="defaults to name" style="width:200px"></div>
+      <button class="btn btn-primary" onclick="quickAddModel()" style="margin-bottom:0">Add</button>
+    </div>
+    <div class="card">
+      <div class="card-header"><h2>Model Mappings</h2></div>
+      <div id="models-table">
+        <div class="empty"><p>No models mapped yet.</p></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL: Add/Edit Provider -->
+<div class="modal-overlay" id="modal-provider">
+  <div class="modal">
+    <h3 id="modal-provider-title">Add Provider</h3>
+    <input type="hidden" id="mp-edit-name">
+    <div class="form-group"><label>Name</label><input id="mp-name" placeholder="e.g. openai"></div>
+    <div class="form-group"><label>Base URL</label><input id="mp-url" placeholder="https://api.openai.com/v1"></div>
+    <div class="form-group"><label>API Key</label><input id="mp-key" type="password" placeholder="sk-..."></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" onclick="closeModal('modal-provider')">Cancel</button>
+      <button class="btn btn-primary" id="mp-save-btn" onclick="saveProvider()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+const $ = (s, p) => (p || document).querySelector(s);
+const $$ = (s, p) => [...(p || document).querySelectorAll(s)];
+
+// Tabs
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  $$('.tab').forEach(x => x.classList.remove('active'));
+  $$('.panel').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $('#' + t.dataset.panel).classList.add('active');
+  if (t.dataset.panel === 'panel-providers') refreshProviders();
+  if (t.dataset.panel === 'panel-models') { refreshSelects(); refreshModels(); }
+}));
+
+// Modal
+window.openModal = (id) => $(`#${id}`).classList.add('show');
+window.closeModal = (id) => $(`#${id}`).classList.remove('show');
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => {
+  if (e.target === o) o.classList.remove('show');
+}));
+
+// Toast
+function toast(msg, type='success') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  $('#toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; setTimeout(() => el.remove(),200); }, 3000);
+}
+
+// API
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error?.message || data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// Refresh stats
+async function refreshStats() {
+  const d = await api('GET', '/api/health');
+  $('#stat-models').innerHTML = `Models: <b>${d.models}</b>`;
+  $('#stat-providers').innerHTML = `Providers: <b>${d.providers}</b>`;
+  $('#stat-port').textContent = d.port;
+}
+
+async function refreshSelects() {
+  const d = await api('GET', '/api/providers');
+  const opts = d.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  const el = $('#q-provider'); if (!el) return;
+  const v = el.value;
+  el.innerHTML = '<option value="">-- select --</option>' + opts;
+  el.value = v;
+}
+
+// ── Providers page ──
+async function refreshProviders() {
+  const d = await api('GET', '/api/providers');
+  const container = $('#providers-list');
+  if (d.length === 0) {
+    container.innerHTML = '<div class="empty"><p>No providers configured.</p><p>Add one &mdash; models auto-scan on add.</p></div>';
+    refreshStats();
+    return;
+  }
+
+  container.innerHTML = d.map(p => {
+    const statusBadge = p.scanStatus === 'ok'
+      ? `<span class="badge badge-ok">${p.scanModelCount} models</span>`
+      : p.scanStatus === 'error'
+        ? `<span class="badge badge-err" title="${esc(p.scanError)}">scan failed</span>`
+        : `<span class="badge badge-pending">scanning...</span>`;
+
+    const mappedBadge = p.modelCount > 0
+      ? `<span class="badge badge-provider">${p.modelCount} mapped</span>` : '';
+
+    return `
+    <div class="provider-card" id="pcard-${esc(p.name)}">
+      <div class="provider-card-header" onclick="toggleProvider('${esc(p.name)}')">
+        <span class="expand-icon">&#9654;</span>
+        <span class="name">${esc(p.name)}</span>
+        <span class="meta">
+          ${mappedBadge}
+          ${statusBadge}
+          <span class="mono" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.baseUrl)}</span>
+        </span>
+        <span class="inline-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-sm" onclick="editProvider('${esc(p.name)}','${esc(p.baseUrl)}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="removeProvider('${esc(p.name)}')">Remove</button>
+        </span>
+      </div>
+      <div class="provider-card-body">
+        <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+          <span style="font-size:13px;color:var(--text2);flex:1">
+            Scanned from <code class="mono">${esc(p.baseUrl)}/models</code>
+          </span>
+          <button class="btn btn-sm" onclick="rescanProvider('${esc(p.name)}')">Re-scan</button>
+          <button class="btn btn-primary btn-sm" onclick="importAllProvider('${esc(p.name)}')">Add All</button>
+        </div>
+        <div class="scan-model-list" id="scanlist-${esc(p.name)}">
+          <div class="empty"><p>Loading scan results...</p></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  refreshStats();
+  refreshSelects();
+  d.forEach(p => loadScanResults(p.name));
+}
+
+async function loadScanResults(providerName) {
+  const list = $(`#scanlist-${providerName}`);
+  if (!list) return;
+  try {
+    const scan = await api('GET', `/api/providers/${encodeURIComponent(providerName)}/scan`);
+    if (scan.error) {
+      list.innerHTML = `<div class="empty"><p style="color:var(--red)">${esc(scan.error)}</p></div>`;
+      updateScanBadge(providerName, 'error', 0, scan.error);
+      return;
+    }
+    const models = scan.models || [];
+    const mapped = await api('GET', '/api/models');
+    const mappedSet = new Set(mapped.filter(m => m.provider === providerName).map(m => m.name));
+
+    if (models.length === 0) {
+      list.innerHTML = '<div class="empty"><p>No models found upstream.</p></div>';
+    } else {
+      list.innerHTML = models.map(m => `
+        <div class="scan-model-row">
+          <span class="mono">${esc(m.id)}</span>
+          <span>
+            ${mappedSet.has(m.id)
+              ? '<span class="exists-tag">mapped</span>'
+              : `<button class="btn btn-xs" onclick="importOne('${esc(providerName)}','${esc(m.id)}')">+ Add</button>`
+            }
+          </span>
+        </div>`).join('');
+    }
+    updateScanBadge(providerName, 'ok', models.length);
+  } catch (e) {
+    list.innerHTML = `<div class="empty"><p style="color:var(--red)">Failed: ${esc(e.message)}</p></div>`;
+    updateScanBadge(providerName, 'error', 0, e.message);
+  }
+}
+
+function updateScanBadge(name, status, count, error) {
+  const card = $(`#pcard-${name}`);
+  if (!card) return;
+  const badge = card.querySelector('.meta .badge');
+  if (!badge) return;
+  if (status === 'ok') {
+    badge.className = 'badge badge-ok';
+    badge.textContent = `${count} models`;
+    badge.title = '';
+  } else {
+    badge.className = 'badge badge-err';
+    badge.textContent = 'scan failed';
+    badge.title = error || '';
+  }
+}
+
+function toggleProvider(name) {
+  $(`#pcard-${name}`).classList.toggle('expanded');
+}
+
+async function rescanProvider(name) {
+  const list = $(`#scanlist-${name}`);
+  if (list) list.innerHTML = '<div class="empty"><p>Scanning...</p></div>';
+  try {
+    await api('POST', `/api/providers/${encodeURIComponent(name)}/scan`);
+    toast(`Re-scan complete`);
+    await loadScanResults(name);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function importAllProvider(name) {
+  try {
+    const r = await api('POST', `/api/providers/${encodeURIComponent(name)}/import-all`);
+    toast(`Added ${r.added} model(s), skipped ${r.skipped}`);
+    await refreshModels();
+    await loadScanResults(name);
+    refreshStats(); refreshSelects(); refreshProvidersQuick();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function importOne(providerName, modelId) {
+  try {
+    await api('POST', `/api/providers/${encodeURIComponent(providerName)}/import/${encodeURIComponent(modelId)}`);
+    toast(`"${modelId}" added`);
+    await refreshModels();
+    await loadScanResults(providerName);
+    refreshStats(); refreshSelects(); refreshProvidersQuick();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function refreshProvidersQuick() {
+  const d = await api('GET', '/api/providers');
+  refreshStats(); refreshSelects();
+  d.forEach(p => {
+    const card = $(`#pcard-${p.name}`);
+    if (!card) return;
+    const badge = card.querySelector('.meta .badge-provider');
+    if (p.modelCount > 0) {
+      if (badge) badge.textContent = `${p.modelCount} mapped`;
+      else {
+        const meta = card.querySelector('.meta');
+        const span = document.createElement('span');
+        span.className = 'badge badge-provider';
+        span.textContent = `${p.modelCount} mapped`;
+        meta.insertBefore(span, meta.firstChild);
+      }
+    }
+  });
+}
+
+// ── Provider CRUD ──
+window.editProvider = (name, baseUrl) => {
+  $('#modal-provider-title').textContent = 'Edit Provider';
+  $('#mp-edit-name').value = name;
+  $('#mp-name').value = name;
+  $('#mp-name').disabled = true;
+  $('#mp-url').value = baseUrl;
+  $('#mp-key').value = '';
+  $('#mp-save-btn').textContent = 'Update';
+  openModal('modal-provider');
+};
+
+window.saveProvider = async () => {
+  const editName = $('#mp-edit-name').value;
+  const name = $('#mp-name').value.trim();
+  const baseUrl = $('#mp-url').value.trim();
+  const apiKey = $('#mp-key').value.trim();
+  if (!name || !baseUrl) { toast('Name and Base URL are required', 'error'); return; }
+  try {
+    if (editName) {
+      await api('PUT', `/api/providers/${encodeURIComponent(editName)}`, { baseUrl, apiKey });
+      toast(`Provider updated. Re-scanning...`);
+    } else {
+      await api('POST', '/api/providers', { name, baseUrl, apiKey });
+      toast(`Provider added. Auto-scanning...`);
+    }
+    closeModal('modal-provider');
+    resetProviderModal();
+    setTimeout(() => refreshProviders(), 1000);
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+function resetProviderModal() {
+  $('#modal-provider-title').textContent = 'Add Provider';
+  $('#mp-edit-name').value = '';
+  $('#mp-name').value = '';
+  $('#mp-name').disabled = false;
+  $('#mp-url').value = '';
+  $('#mp-key').value = '';
+  $('#mp-save-btn').textContent = 'Save';
+}
+
+window.removeProvider = async (name) => {
+  if (!confirm(`Remove provider "${name}" and all its models?`)) return;
+  try {
+    await api('DELETE', `/api/providers/${encodeURIComponent(name)}`);
+    toast(`Provider removed`);
+    await refreshProviders();
+    await refreshModels();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+// ── Models ──
+async function refreshModels() {
+  const d = await api('GET', '/api/models');
+  const container = $('#models-table');
+  if (d.length === 0) {
+    container.innerHTML = '<div class="empty"><p>No models mapped yet.</p></div>';
+    return;
+  }
+  container.innerHTML = `
+    <table>
+      <thead><tr><th>Mapping</th><th>Provider</th><th>Upstream Model</th><th>Latency</th><th></th></tr></thead>
+      <tbody>${d.map(m => `
+        <tr>
+          <td class="mono"><b>${esc(m.name)}</b></td>
+          <td><span class="badge badge-provider">${esc(m.provider)}</span></td>
+          <td class="mono">${esc(m.modelId)}</td>
+          <td id="lat-${esc(m.name)}" style="width:100px">
+            <button class="btn btn-xs" onclick="testModel('${esc(m.name)}')">Test</button>
+          </td>
+          <td style="text-align:right">
+            <button class="btn btn-danger btn-xs" onclick="removeModel('${esc(m.name)}')">Remove</button>
+          </td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+window.quickAddModel = async () => {
+  try {
+    const name = $('#q-name').value.trim();
+    const provider = $('#q-provider').value;
+    const modelId = $('#q-upstream').value.trim() || name;
+    if (!name || !provider) { toast('Name and Provider required', 'error'); return; }
+    await api('POST', '/api/models', { name, provider, modelId });
+    toast(`Model added`);
+    $('#q-name').value = $('#q-upstream').value = '';
+    await refreshModels();
+    refreshStats(); refreshProvidersQuick();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window.removeModel = async (name) => {
+  if (!confirm(`Remove model "${name}"?`)) return;
+  try {
+    await api('DELETE', `/api/models/${encodeURIComponent(name)}`);
+    toast(`Model removed`);
+    await refreshModels();
+    refreshStats();
+  } catch(e) { toast(e.message, 'error'); }
+};
+
+window.testModel = async (name) => {
+  const cell = $(`#lat-${name}`);
+  if (!cell) return;
+  cell.innerHTML = '<span style="color:var(--text2);font-size:12px">...</span>';
+  try {
+    const r = await api('POST', `/api/test/${encodeURIComponent(name)}`);
+    if (r.ok) {
+      cell.innerHTML = `<span class="badge badge-ok" title="${esc(r.preview)}">${r.latencyMs}ms</span>`;
+    } else {
+      cell.innerHTML = `<span class="badge badge-err" title="${esc(r.error)}">fail</span>`;
+    }
+  } catch(e) {
+    cell.innerHTML = `<span class="badge badge-err" title="${esc(e.message)}">fail</span>`;
+  }
+};
+
+// ── Helpers ──
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Init ──
+refreshStats();
+refreshSelects();
+</script>
+</body>
+</html>
+
