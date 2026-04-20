@@ -175,7 +175,7 @@
 <script>
 const $=(s,p)=>(p||document).querySelector(s)
 const $$=(s,p)=>[...(p||document).querySelectorAll(s)]
-const C=CSS.escape
+const sid=s=>String(s).replace(/[^a-zA-Z0-9_-]/g,'_')
 
 $$('.tab').forEach(t=>t.addEventListener('click',()=>{
   $$('.tab').forEach(x=>x.classList.remove('active'));$$('.panel').forEach(x=>x.classList.remove('active'))
@@ -204,7 +204,7 @@ async function refreshProviders(){
   c.innerHTML=d.map(p=>{
     const sb=p.scanStatus==='ok'?`<span class="badge badge-ok">${p.scanModelCount} models</span>`:p.scanStatus==='error'?`<span class="badge badge-err">scan failed</span>`:`<span class="badge badge-pending">scanning...</span>`
     const mb=p.modelCount>0?`<span class="badge badge-provider">${p.modelCount} in catalog</span>`:''
-    return`<div class="provider-card" id="pcard-${C(p.name)}">
+    return`<div class="provider-card" id="pcard-${sid(p.name)}">
       <div class="provider-card-header" onclick="toggleProvider('${esc(p.name)}')">
         <span class="expand-icon">▶</span><span class="name">${esc(p.name)}</span>
         <span class="meta">${mb}${sb}<span class="mono" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.baseUrl)}</span></span>
@@ -219,14 +219,14 @@ async function refreshProviders(){
           <button class="btn btn-sm" onclick="rescanProvider('${esc(p.name)}')">Re-scan</button>
           <button class="btn btn-primary btn-sm" onclick="importAllProvider('${esc(p.name)}')">Add All to Catalog</button>
         </div>
-        <div class="scan-model-list" id="scanlist-${C(p.name)}"><div class="empty"><p>Loading...</p></div></div>
+        <div class="scan-model-list" id="scanlist-${sid(p.name)}"><div class="empty"><p>Loading...</p></div></div>
       </div></div>`
   }).join('')
   refreshStats();d.forEach(p=>loadScanResults(p.name))
 }
 
 async function loadScanResults(pn){
-  const list=$(`#scanlist-${C(pn)}`);if(!list)return
+  const list=$(`#scanlist-${sid(pn)}`);if(!list)return
   try{
     const scan=await api('GET',`/api/providers/${encodeURIComponent(pn)}/scan`)
     if(scan.error){list.innerHTML=`<div class="empty"><p style="color:var(--red)">${esc(scan.error)}</p></div>`;updateScanBadge(pn,'error',0);return}
@@ -238,9 +238,9 @@ async function loadScanResults(pn){
   }catch(e){list.innerHTML=`<div class="empty"><p style="color:var(--red)">${esc(e.message)}</p></div>`;updateScanBadge(pn,'error',0)}
 }
 
-function updateScanBadge(name,status,count){const card=$(`#pcard-${C(name)}`);if(!card)return;const b=card.querySelector('.meta .badge');if(!b)return;if(status==='ok'){b.className='badge badge-ok';b.textContent=`${count} models`}else{b.className='badge badge-err';b.textContent='scan failed'}}
-function toggleProvider(name){$(`#pcard-${C(name)}`).classList.toggle('expanded')}
-async function rescanProvider(name){const list=$(`#scanlist-${C(name)}`);if(list)list.innerHTML='<div class="empty"><p>Scanning...</p></div>';try{await api('POST',`/api/providers/${encodeURIComponent(name)}/scan`);toast('Re-scan done');await loadScanResults(name)}catch(e){toast(e.message,'error')}}
+function updateScanBadge(name,status,count){const card=$(`#pcard-${sid(name)}`);if(!card)return;const b=card.querySelector('.meta .badge');if(!b)return;if(status==='ok'){b.className='badge badge-ok';b.textContent=`${count} models`}else{b.className='badge badge-err';b.textContent='scan failed'}}
+function toggleProvider(name){$(`#pcard-${sid(name)}`).classList.toggle('expanded')}
+async function rescanProvider(name){const list=$(`#scanlist-${sid(name)}`);if(list)list.innerHTML='<div class="empty"><p>Scanning...</p></div>';try{await api('POST',`/api/providers/${encodeURIComponent(name)}/scan`);toast('Re-scan done');await loadScanResults(name)}catch(e){toast(e.message,'error')}}
 async function importAllProvider(name){try{const r=await api('POST',`/api/providers/${encodeURIComponent(name)}/import-all`);toast(`Added ${r.added} to catalog, skipped ${r.skipped}`);await refreshModels();await loadScanResults(name);refreshStats()}catch(e){toast(e.message,'error')}}
 async function importOne(pn,mid){try{await api('POST',`/api/providers/${encodeURIComponent(pn)}/import/${encodeURIComponent(mid)}`);toast(`"${mid}" added to catalog`);await refreshModels();await loadScanResults(pn);refreshStats()}catch(e){toast(e.message,'error')}}
 
@@ -256,7 +256,7 @@ async function refreshModels(){
   if(d.length===0){c.innerHTML='<div class="empty"><p>No models in catalog.</p></div>';return}
   c.innerHTML=`<table><thead><tr><th>Name</th><th>Provider</th><th>Upstream</th><th>Latency</th><th></th></tr></thead><tbody>${d.map(m=>`<tr>
     <td class="mono"><b>${esc(m.name)}</b></td><td><span class="badge badge-provider">${esc(m.provider)}</span></td><td class="mono">${esc(m.modelId)}</td>
-    <td id="lat-${C(m.name)}" style="width:90px"><button class="btn btn-xs" onclick="testName('${esc(m.name)}')">Test</button></td>
+    <td id="lat-${sid(m.name)}" style="width:90px"><button class="btn btn-xs" onclick="testName('${esc(m.name)}')">Test</button></td>
     <td style="text-align:right;white-space:nowrap">
       <button class="btn btn-xs" onclick="createMapping('${esc(m.name)}','${esc(m.provider)}','${esc(m.modelId)}')">+ Mapping</button>
       <button class="btn btn-danger btn-xs" onclick="removeModelDef('${esc(m.name)}')">Remove</button>
@@ -271,10 +271,10 @@ window.createMapping=(name,provider,modelId)=>{$('#m-name').value=name;$('#m-pro
 async function refreshMappings(){
   const d=await api('GET','/api/mappings');const c=$('#mappings-table')
   if(d.length===0){c.innerHTML='<div class="empty"><p>No mappings yet.</p></div>';return}
-  c.innerHTML=`<table><thead><tr><th>Mapping</th><th>Provider</th><th>Upstream</th><th>Latency</th><th></th></tr></thead><tbody>${d.map(m=>`<tr id="mrow-${C(m.name)}" data-provider="${esc(m.provider)}" data-modelid="${esc(m.modelId)}">
-    <td class="mono"><b>${esc(m.name)}</b></td><td id="mp-${C(m.name)}"><span class="badge badge-provider">${esc(m.provider)}</span></td><td class="mono" id="mm-${C(m.name)}">${esc(m.modelId)}</td>
-    <td id="lat-${C(m.name)}" style="width:90px"><button class="btn btn-xs" onclick="testName('${esc(m.name)}')">Test</button></td>
-    <td style="text-align:right;white-space:nowrap" id="mact-${C(m.name)}">
+  c.innerHTML=`<table><thead><tr><th>Mapping</th><th>Provider</th><th>Upstream</th><th>Latency</th><th></th></tr></thead><tbody>${d.map(m=>`<tr id="mrow-${sid(m.name)}" data-provider="${esc(m.provider)}" data-modelid="${esc(m.modelId)}">
+    <td class="mono"><b>${esc(m.name)}</b></td><td id="mp-${sid(m.name)}"><span class="badge badge-provider">${esc(m.provider)}</span></td><td class="mono" id="mm-${sid(m.name)}">${esc(m.modelId)}</td>
+    <td id="lat-${sid(m.name)}" style="width:90px"><button class="btn btn-xs" onclick="testName('${esc(m.name)}')">Test</button></td>
+    <td style="text-align:right;white-space:nowrap" id="mact-${sid(m.name)}">
       <button class="btn btn-xs" onclick="editMappingInline('${esc(m.name)}')">Edit</button>
       <button class="btn btn-danger btn-xs" onclick="removeMapping('${esc(m.name)}')">Remove</button>
     </td></tr>`).join('')}</tbody></table>`
@@ -283,62 +283,56 @@ async function refreshMappings(){
 window.addMapping=async()=>{const n=$('#m-name').value.trim();const p=$('#m-provider').value;const m=$('#m-modelId').value.trim();if(!n||!p||!m){toast('All fields required','error');return}try{await api('POST','/api/mappings',{name:n,provider:p,modelId:m});toast(`Mapping "${n}" created`);$('#m-name').value=$('#m-modelId').value='';await refreshMappings();refreshStats()}catch(e){toast(e.message,'error')}}
 
 window.editMappingInline=async name=>{
-  const row=$(`#mrow-${C(name)}`);if(!row||row.classList.contains('editing'))return;
+  const row=$(`#mrow-${sid(name)}`);if(!row||row.classList.contains('editing'))return;
   row.classList.add('editing');
   row._prev={provider:row.dataset.provider,modelId:row.dataset.modelid};
-  // Fetch providers + model catalog for selects
   const [providers, catalog]=await Promise.all([api('GET','/api/providers'),api('GET','/api/models')]);
   const provOpts=providers.map(p=>`<option value="${esc(p.name)}" ${p.name===row._prev.provider?'selected':''}>${esc(p.name)}</option>`).join('');
   const catOpts=catalog.map(m=>`<option value="${esc(m.provider)}|${esc(m.modelId)}">${esc(m.name)} (${esc(m.provider)})</option>`).join('');
-  // Provider cell → select + Quick Pick
-  const mpCell=$(`#mp-${C(name)}`);
-  mpCell.innerHTML=`<select id="mep-${C(name)}" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;width:110px">${provOpts}</select>`;
-  // ModelId cell → input + Quick Pick row above
-  const mmCell=$(`#mm-${C(name)}`);
-  mmCell.innerHTML=`<input id="mem-${C(name)}" value="${esc(row._prev.modelId)}" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;width:150px">`;
-  // Actions cell → Save / Cancel
-  const actCell=$(`#mact-${C(name)}`);
+  const mpCell=$(`#mp-${sid(name)}`);
+  mpCell.innerHTML=`<select id="mep-${sid(name)}" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;width:110px">${provOpts}</select>`;
+  const mmCell=$(`#mm-${sid(name)}`);
+  mmCell.innerHTML=`<input id="mem-${sid(name)}" value="${esc(row._prev.modelId)}" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-family:inherit;width:150px">`;
+  const actCell=$(`#mact-${sid(name)}`);
   actCell.innerHTML=`<button class="btn btn-primary btn-xs" onclick="saveMappingEdit('${esc(name)}')">Save</button><button class="btn btn-xs" onclick="cancelMappingEdit('${esc(name)}')">Cancel</button>`;
-  // Insert Quick Pick row above
   const quickPickRow=document.createElement('tr');
-  quickPickRow.id=`mqpick-${C(name)}`;
-  quickPickRow.innerHTML=`<td colspan="5" style="padding:4px 12px;background:var(--surface2);font-size:12px"><span style="color:var(--text2);margin-right:8px">Quick pick from catalog:</span><select id="mcat-${C(name)}" onchange="pickFromCatalog('${esc(name)}')" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;min-width:180px"><option value="">-- select --</option>${catOpts}</select></td>`;
+  quickPickRow.id=`mqpick-${sid(name)}`;
+  quickPickRow.innerHTML=`<td colspan="5" style="padding:4px 12px;background:var(--surface2);font-size:12px"><span style="color:var(--text2);margin-right:8px">Quick pick from catalog:</span><select id="mcat-${sid(name)}" onchange="pickFromCatalog('${esc(name)}')" style="padding:3px 6px;border-radius:4px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;font-family:inherit;min-width:180px"><option value="">-- select --</option>${catOpts}</select></td>`;
   row.parentNode.insertBefore(quickPickRow,row);
 };
 
 window.pickFromCatalog=name=>{
-  const sel=$(`#mcat-${C(name)}`);if(!sel||!sel.value)return;
+  const sel=$(`#mcat-${sid(name)}`);if(!sel||!sel.value)return;
   const [provider,modelId]=sel.value.split('|');
-  const provSel=$(`#mep-${C(name)}`);if(provSel)provSel.value=provider;
-  const modelInput=$(`#mem-${C(name)}`);if(modelInput)modelInput.value=modelId;
+  const provSel=$(`#mep-${sid(name)}`);if(provSel)provSel.value=provider;
+  const modelInput=$(`#mem-${sid(name)}`);if(modelInput)modelInput.value=modelId;
 };
 
 window.saveMappingEdit=async name=>{
-  const provider=$(`#mep-${C(name)}`)?.value;
-  const modelId=$(`#mem-${C(name)}`)?.value;
+  const provider=$(`#mep-${sid(name)}`)?.value;
+  const modelId=$(`#mem-${sid(name)}`)?.value;
   if(!provider||!modelId){toast('Provider and Model ID required','error');return}
   try{
     await api('PUT',`/api/mappings/${encodeURIComponent(name)}`,{provider,modelId});
     toast(`"${name}" updated`);
-    // Remove quick pick row and refresh
-    const qp=$(`#mqpick-${C(name)}`);if(qp)qp.remove();
+    const qp=$(`#mqpick-${sid(name)}`);if(qp)qp.remove();
     await refreshMappings();
   }catch(e){toast(e.message,'error')}
 };
 
 window.cancelMappingEdit=name=>{
-  const qp=$(`#mqpick-${C(name)}`);if(qp)qp.remove();
-  const row=$(`#mrow-${C(name)}`);if(!row||!row._prev)return;
-  $(`#mp-${C(name)}`).innerHTML=`<span class="badge badge-provider">${esc(row._prev.provider)}</span>`;
-  $(`#mm-${C(name)}`).innerHTML=esc(row._prev.modelId);
-  $(`#mact-${C(name)}`).innerHTML=`<button class="btn btn-xs" onclick="editMappingInline('${esc(name)}')">Edit</button><button class="btn btn-danger btn-xs" onclick="removeMapping('${esc(name)}')">Remove</button>`;
+  const qp=$(`#mqpick-${sid(name)}`);if(qp)qp.remove();
+  const row=$(`#mrow-${sid(name)}`);if(!row||!row._prev)return;
+  $(`#mp-${sid(name)}`).innerHTML=`<span class="badge badge-provider">${esc(row._prev.provider)}</span>`;
+  $(`#mm-${sid(name)}`).innerHTML=esc(row._prev.modelId);
+  $(`#mact-${sid(name)}`).innerHTML=`<button class="btn btn-xs" onclick="editMappingInline('${esc(name)}')">Edit</button><button class="btn btn-danger btn-xs" onclick="removeMapping('${esc(name)}')">Remove</button>`;
   row.classList.remove('editing');
 };
 
 window.removeMapping=async n=>{if(!confirm(`Remove mapping "${n}"?`))return;try{await api('DELETE',`/api/mappings/${encodeURIComponent(n)}`);toast('Mapping removed');await refreshMappings();refreshStats()}catch(e){toast(e.message,'error')}}
 
 // ── Test ──
-window.testName=async name=>{const cell=$(`#lat-${C(name)}`);if(!cell)return;cell.innerHTML='<span style="color:var(--text2);font-size:12px">...</span>';try{const r=await api('POST',`/api/test/${encodeURIComponent(name)}`);if(r.ok)cell.innerHTML=`<span class="badge badge-ok" title="${esc(r.preview)}">${r.latencyMs}ms</span>`;else cell.innerHTML=`<span class="badge badge-err" title="${esc(r.error)}">fail</span>`}catch(e){cell.innerHTML=`<span class="badge badge-err" title="${esc(e.message)}">fail</span>`}}
+window.testName=async name=>{const cell=$(`#lat-${sid(name)}`);if(!cell)return;cell.innerHTML='<span style="color:var(--text2);font-size:12px">...</span>';try{const r=await api('POST',`/api/test/${encodeURIComponent(name)}`);if(r.ok)cell.innerHTML=`<span class="badge badge-ok" title="${esc(r.preview)}">${r.latencyMs}ms</span>`;else cell.innerHTML=`<span class="badge badge-err" title="${esc(r.error)}">fail</span>`}catch(e){cell.innerHTML=`<span class="badge badge-err" title="${esc(e.message)}">fail</span>`}}
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
