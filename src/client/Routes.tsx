@@ -95,7 +95,7 @@ export function Routes({ onRefresh }: Props) {
           <div className="empty"><p>No models in catalog. Star (★) models from the Providers tab.</p></div>
         ) : (
           <table>
-            <thead><tr><th>Name</th><th>Provider</th><th>Upstream</th><th>Latency</th><th /></tr></thead>
+            <thead><tr><th>Name</th><th>Provider</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {models.map(m => {
                 const routed = routedNames.has(m.modelId);
@@ -103,13 +103,12 @@ export function Routes({ onRefresh }: Props) {
                   <tr key={m.name}>
                     <td className="mono"><b>{m.modelId}</b></td>
                     <td><span className="badge badge-provider">{m.provider}</span></td>
-                    <td className="mono">{m.modelId}</td>
-                    <td style={{ width: 90 }}><Latency name={m.modelId} /></td>
+                    <td><Latency name={m.modelId} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {!routed && (
                         <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>
                       )}
-                      {routed && <span className="badge badge-ok" style={{ marginRight: 8 }}>routed</span>}
+                      {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}
                       <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)}>Remove</button>
                     </td>
                   </tr>
