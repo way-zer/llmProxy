@@ -177,8 +177,9 @@ export function Routes({ onRefresh }: Props) {
                   <td className="mono">{m.name}</td>
                   <td><span className="badge badge-provider">{m.provider}</span></td>
                   <td className="mono">{m.modelId}</td>
-                  <td style={{ textAlign: 'right' }}>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                     <button className="btn btn-xs" onClick={() => addFromCatalog(m.name, m.provider, m.modelId)}>Add Route</button>
+                    <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)} style={{ marginLeft: 4 }}>Remove</button>
                   </td>
                 </tr>
               ))}
