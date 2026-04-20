@@ -1,4 +1,4 @@
-import type { AppConfig, ProviderConfig, UpstreamModel } from './types';
+import type { AppConfig, ProviderConfig } from './types';
 import { join } from 'node:path';
 
 const CONFIG_PATH = join(import.meta.dir, '..', 'config.json');
@@ -8,7 +8,6 @@ let config: AppConfig = {
   providers: {},
   models: {},
   mappings: {},
-  scans: {},
 };
 
 export function getConfig(): Readonly<AppConfig> {
@@ -25,10 +24,9 @@ export async function loadConfig(): Promise<AppConfig> {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
     if (!config.mappings) config.mappings = {};
-    if (!config.scans) config.scans = {};
   } else {
     console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
-    config = { port: 3000, providers: {}, models: {}, mappings: {}, scans: {} };
+    config = { port: 3000, providers: {}, models: {}, mappings: {} };
     await saveConfig();
   }
   return config;
@@ -45,7 +43,6 @@ export async function reloadConfigAsync(): Promise<AppConfig> {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
     if (!config.mappings) config.mappings = {};
-    if (!config.scans) config.scans = {};
   }
   return config;
 }
@@ -113,19 +110,7 @@ export function removeMapping(name: string): boolean {
   return true;
 }
 
-// ─── Scans (持久化) ──────────────────────────────────────────
-
-export function getScan(providerName: string): AppConfig['scans'][string] | undefined {
-  return config.scans[providerName];
-}
-
-export function saveScan(providerName: string, models: UpstreamModel[], error?: string): void {
-  config.scans[providerName] = { models, error, scannedAt: Date.now() };
-}
-
-export function clearScan(providerName: string): void {
-  delete config.scans[providerName];
-}
+// ─── Lookup (mapping → provider, fallback model → provider) ───
 
 // ─── Lookup (mapping → provider, fallback model → provider) ───
 

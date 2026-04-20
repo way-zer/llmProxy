@@ -4,10 +4,9 @@ import {
   addMapping, updateMapping, removeMapping,
   addProvider, updateProvider, removeProvider,
   reloadConfigAsync,
-  clearScan,
 } from './config';
 import { scanProvider, getCachedScan } from './scanner';
-
+import { clearScan } from './scanstore';
 // ─── JSON helper ────────────────────────────────────────────
 
 function json(data: unknown, headers: Record<string, string>, status = 200): Response {
@@ -16,10 +15,10 @@ function json(data: unknown, headers: Record<string, string>, status = 200): Res
 
 // ─── Providers ──────────────────────────────────────────────
 
-export function handleListProviders(corsHeaders: Record<string, string>): Response {
+export async function handleListProviders(corsHeaders: Record<string, string>): Promise<Response> {
   const cfg = getConfig();
-  const list = Object.entries(cfg.providers).map(([name, p]) => {
-    const scan = getCachedScan(name);
+  const entries = await Promise.all(Object.entries(cfg.providers).map(async ([name, p]) => {
+    const scan = await getCachedScan(name);
     return {
       name, baseUrl: p.baseUrl,
       apiKey: p.apiKey ? p.apiKey.slice(0, 6) + '...' + p.apiKey.slice(-4) : '',
@@ -30,8 +29,8 @@ export function handleListProviders(corsHeaders: Record<string, string>): Respon
       scanModelCount: scan?.models?.length ?? 0,
       scannedAt: scan?.scannedAt ?? null,
     };
-  });
-  return json(list, corsHeaders);
+  }));
+  return json(entries, corsHeaders);
 }
 
 export async function handleAddProvider(request: Request, corsHeaders: Record<string, string>): Promise<Response> {
@@ -57,7 +56,7 @@ export async function handleUpdateProvider(name: string, request: Request, corsH
       return json({ error: `Provider '${name}' not found` }, corsHeaders, 404);
     }
     await saveConfig();
-    clearScan(name);
+    await clearScan(name);
     scanProvider(name).then(r => {
       console.log(`[admin] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`);
     }).catch(() => {});
@@ -69,7 +68,7 @@ export async function handleUpdateProvider(name: string, request: Request, corsH
 
 export async function handleRemoveProvider(name: string, corsHeaders: Record<string, string>): Promise<Response> {
   if (removeProvider(name)) {
-    clearScan(name);
+    await clearScan(name);
     await saveConfig();
     return json({ success: true, name }, corsHeaders);
   }
@@ -83,14 +82,14 @@ export async function handleScanProvider(name: string, corsHeaders: Record<strin
   return json(r, corsHeaders, r.error ? 400 : 200);
 }
 
-export function handleGetProviderScan(name: string, corsHeaders: Record<string, string>): Response {
-  const cached = getCachedScan(name);
-  if (!cached) return json({ error: `No scan cached for '${name}'` }, corsHeaders, 404);
+export async function handleGetProviderScan(name: string, corsHeaders: Record<string, string>): Promise<Response> {
+  const cached = await getCachedScan(name);
+  if (!cached) return json({ providerName: name, baseUrl: '', models: [], scannedAt: 0 }, corsHeaders);
   return json(cached, corsHeaders);
 }
 
 export async function handleImportAll(providerName: string, corsHeaders: Record<string, string>): Promise<Response> {
-  let scan = getCachedScan(providerName);
+  let scan = await getCachedScan(providerName);
   if (!scan || scan.error) {
     scan = await scanProvider(providerName);
     if (scan.error) return json({ error: scan.error }, corsHeaders, 400);

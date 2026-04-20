@@ -16,8 +16,6 @@ export interface AppConfig {
   providers: Record<string, ProviderConfig>;
   models: Record<string, ModelDef>;
   mappings: Record<string, ModelDef>;
-  /** Persisted scan results per provider */
-  scans: Record<string, { models: UpstreamModel[]; error?: string; scannedAt: number }>;
 }
 
 export interface ChatCompletionRequest {

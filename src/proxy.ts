@@ -18,7 +18,7 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
 } as const;
 
-// ─── Server ─────────────────────────────────────────────────
+const D = decodeURIComponent;
 
 export function startProxy(port: number): ReturnType<typeof Bun.serve> {
   const server = Bun.serve({
@@ -29,73 +29,59 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       '/api/health': { GET: () => health() },
       '/v1/models': { GET: () => clientModels() },
       '/v1/chat/completions': { POST: proxyChat },
+
       '/api/providers': {
         GET: () => handleListProviders(CORS),
         POST: req => handleAddProvider(req, CORS),
       },
+      '/api/providers/:name': {
+        DELETE: req => handleRemoveProvider(D(req.params.name), CORS),
+        PUT: req => handleUpdateProvider(D(req.params.name), req, CORS),
+      },
+      '/api/providers/:name/scan': {
+        GET: async req => handleGetProviderScan(D(req.params.name), CORS),
+        POST: req => handleScanProvider(D(req.params.name), CORS),
+      },
+      '/api/providers/:name/import-all': {
+        POST: req => handleImportAll(D(req.params.name), CORS),
+      },
+      '/api/providers/:name/import/:modelId': {
+        POST: req => handleImportOne(D(req.params.name), D(req.params.modelId), CORS),
+      },
+
       '/api/models': {
         GET: () => handleListModelDefs(CORS),
         POST: req => handleAddModelDef(req, CORS),
       },
+      '/api/models/:name': {
+        DELETE: req => handleRemoveModelDef(D(req.params.name), CORS),
+      },
+
       '/api/mappings': {
         GET: () => handleListMappings(CORS),
         POST: req => handleAddMapping(req, CORS),
       },
+      '/api/mappings/:name': {
+        DELETE: req => handleRemoveMapping(D(req.params.name), CORS),
+        PUT: req => handleUpdateMapping(D(req.params.name), req, CORS),
+      },
+
+      '/api/test/:name': {
+        POST: req => handleTestModel(D(req.params.name), CORS),
+      },
       '/api/reload': { POST: () => handleReload(CORS) },
+
+      // Legacy
+      '/api/scan/:name': { POST: req => handleScanProvider(D(req.params.name), CORS) },
+      '/api/scan-add/:name': { POST: req => handleImportAll(D(req.params.name), CORS) },
     },
     async fetch(req): Promise<Response> {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-
-      const url = new URL(req.url);
-      const p = url.pathname;
-      const m = req.method;
-
-      // ── Param routes ────────────────────────────────
-      // /api/providers/:name
-      let match = p.match(/^\/api\/providers\/([^/]+)$/);
-      if (match) {
-        const n = decodeURIComponent(match[1]!);
-        if (m === 'DELETE') return handleRemoveProvider(n, CORS);
-        if (m === 'PUT') return handleUpdateProvider(n, req, CORS);
+      // Static files
+      if (req.method === 'GET') {
+        const p = new URL(req.url).pathname.slice(1);
+        if (p && !p.startsWith('api/') && !p.startsWith('v1/')) return await serve(p);
       }
-      // /api/providers/:name/scan
-      match = p.match(/^\/api\/providers\/([^/]+)\/scan$/);
-      if (match) {
-        const n = decodeURIComponent(match[1]!);
-        if (m === 'GET') return handleGetProviderScan(n, CORS);
-        if (m === 'POST') return handleScanProvider(n, CORS);
-      }
-      // /api/providers/:name/import-all
-      match = p.match(/^\/api\/providers\/([^/]+)\/import-all$/);
-      if (match && m === 'POST') return handleImportAll(decodeURIComponent(match[1]!), CORS);
-      // /api/providers/:name/import/:modelId
-      match = p.match(/^\/api\/providers\/([^/]+)\/import\/(.+)$/);
-      if (match && m === 'POST') return handleImportOne(decodeURIComponent(match[1]!), decodeURIComponent(match[2]!), CORS);
-
-      // /api/models/:name
-      if (p.startsWith('/api/models/') && m === 'DELETE') return handleRemoveModelDef(decodeURIComponent(p.slice('/api/models/'.length)), CORS);
-
-      // /api/mappings/:name
-      match = p.match(/^\/api\/mappings\/([^/]+)$/);
-      if (match) {
-        const n = decodeURIComponent(match[1]!);
-        if (m === 'DELETE') return handleRemoveMapping(n, CORS);
-        if (m === 'PUT') return handleUpdateMapping(n, req, CORS);
-      }
-
-      // /api/test/:name
-      if (p.startsWith('/api/test/') && m === 'POST') return handleTestModel(decodeURIComponent(p.slice('/api/test/'.length)), CORS);
-
-      // Legacy
-      if (p.startsWith('/api/scan/') && m === 'POST') return handleScanProvider(decodeURIComponent(p.slice('/api/scan/'.length)), CORS);
-      if (p.startsWith('/api/scan-add/') && m === 'POST') return handleImportAll(decodeURIComponent(p.slice('/api/scan-add/'.length)), CORS);
-
-      // ── Static files ────────────────────────────────
-      if (m === 'GET' && p !== '/') {
-        const f = p.slice(1);
-        if (!f.startsWith('api/') && !f.startsWith('v1/')) return await serve(f);
-      }
-
       return new Response('Not Found', { status: 404, headers: CORS });
     },
     error(err) {
@@ -109,8 +95,6 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
   return server;
 }
 
-// ─── Static files ───────────────────────────────────────────
-
 async function serve(filePath: string): Promise<Response> {
   if (filePath.includes('..') || filePath.startsWith('/')) return new Response('Forbidden', { status: 403, headers: CORS });
   const f = Bun.file(join(PUBLIC_DIR, filePath));
@@ -119,14 +103,10 @@ async function serve(filePath: string): Promise<Response> {
   return new Response(f.stream(), { headers: { 'Content-Type': mime[filePath.split('.').pop()!] ?? 'application/octet-stream', ...CORS } });
 }
 
-// ─── Health ─────────────────────────────────────────────────
-
 function health(): Response {
   const c = getConfig();
   return json({ status: 'ok', models: Object.keys(c.models).length, mappings: Object.keys(c.mappings).length, providers: Object.keys(c.providers).length, port: c.port });
 }
-
-// ─── OpenAI model list ──────────────────────────────────────
 
 function clientModels(): Response {
   const c = getConfig();
@@ -136,8 +116,6 @@ function clientModels(): Response {
   for (const [name, m] of Object.entries(c.models)) { if (!seen.has(name)) data.push({ id: name, object: 'model', created: 0, owned_by: m.provider }); }
   return json({ object: 'list', data });
 }
-
-// ─── Chat proxy ─────────────────────────────────────────────
 
 async function proxyChat(req: Request): Promise<Response> {
   let body: ChatCompletionRequest;
@@ -179,8 +157,6 @@ async function proxyChat(req: Request): Promise<Response> {
     return json({ error: { message: `Upstream connection failed: ${msg}` } }, 502);
   }
 }
-
-// ─── Helper ─────────────────────────────────────────────────
 
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...CORS } });

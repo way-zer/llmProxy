@@ -1,5 +1,6 @@
-import type { UpstreamModelsResponse, UpstreamModel } from "./types";
-import { getConfig, getScan, saveScan } from "./config";
+import type { UpstreamModelsResponse, UpstreamModel } from './types';
+import { getConfig } from './config';
+import { getScan, saveScan } from './scanstore';
 
 export interface ScanResult {
   providerName: string;
@@ -9,9 +10,8 @@ export interface ScanResult {
   scannedAt: number;
 }
 
-/** Get persisted scan from config. */
-export function getCachedScan(providerName: string): ScanResult | undefined {
-  const s = getScan(providerName);
+export async function getCachedScan(providerName: string): Promise<ScanResult | undefined> {
+  const s = await getScan(providerName);
   if (!s) return undefined;
   const provider = getConfig().providers[providerName];
   return {
@@ -23,53 +23,40 @@ export function getCachedScan(providerName: string): ScanResult | undefined {
   };
 }
 
-/** Scan upstream and persist result to config. */
 export async function scanProvider(providerName: string): Promise<ScanResult> {
   const cfg = getConfig();
   const provider = cfg.providers[providerName];
 
   if (!provider) {
-    const result: ScanResult = {
-      providerName, baseUrl: '', models: [],
-      error: `Provider '${providerName}' not found`,
-      scannedAt: Date.now(),
-    };
-    saveScan(providerName, [], result.error);
-    return result;
+    const r: ScanResult = { providerName, baseUrl: '', models: [], error: `Provider '${providerName}' not found`, scannedAt: Date.now() };
+    await saveScan(providerName, [], r.error);
+    return r;
   }
 
-  const modelsUrl = `${provider.baseUrl.replace(/\/$/, "")}/models`;
-
+  const url = `${provider.baseUrl.replace(/\/$/, '')}/models`;
   try {
-    const response = await fetch(modelsUrl, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
-        "Content-Type": "application/json",
-      },
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
     });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "unknown error");
-      const error = `HTTP ${response.status}: ${errorText.slice(0, 300)}`;
-      saveScan(providerName, [], error);
-      return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
+    if (!res.ok) {
+      const t = await res.text().catch(() => 'unknown error');
+      const err = `HTTP ${res.status}: ${t.slice(0, 300)}`;
+      await saveScan(providerName, [], err);
+      return { providerName, baseUrl: provider.baseUrl, models: [], error: err, scannedAt: Date.now() };
     }
-
-    const data = (await response.json()) as UpstreamModelsResponse;
-
-    if (!data.data || !Array.isArray(data.data)) {
-      const error = `Unexpected response format: expected { data: [...] }`;
-      saveScan(providerName, [], error);
-      return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
+    const data = (await res.json()) as UpstreamModelsResponse;
+    if (!data.data?.length) {
+      await saveScan(providerName, []);
+      return { providerName, baseUrl: provider.baseUrl, models: [], scannedAt: Date.now() };
     }
-
     const models = data.data.sort((a, b) => a.id.localeCompare(b.id));
-    saveScan(providerName, models);
+    await saveScan(providerName, models);
     return { providerName, baseUrl: provider.baseUrl, models, scannedAt: Date.now() };
   } catch (err) {
-    const error = `Connection failed: ${err instanceof Error ? err.message : String(err)}`;
-    saveScan(providerName, [], error);
-    return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
+    const msg = `Connection failed: ${err instanceof Error ? err.message : String(err)}`;
+    await saveScan(providerName, [], msg);
+    return { providerName, baseUrl: provider.baseUrl, models: [], error: msg, scannedAt: Date.now() };
   }
 }
+
