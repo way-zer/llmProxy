@@ -12,10 +12,7 @@ export function Routes({ onRefresh }: Props) {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [tests, setTests] = useState<Record<string, TestResult | null>>({});
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  // New mapping form
-  const [newName, setNewName] = useState('');
-  const [newProvider, setNewProvider] = useState('');
-  const [newModelId, setNewModelId] = useState('');
+  const [pickModel, setPickModel] = useState('');
 
   const toast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setMsg({ text, type });
@@ -41,7 +38,6 @@ export function Routes({ onRefresh }: Props) {
     try {
       const r = await api.test(name);
       setTests(prev => ({ ...prev, [name]: r }));
-    } catch (e) {
       setTests(prev => ({ ...prev, [name]: { modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } }));
     }
   };
@@ -52,13 +48,25 @@ export function Routes({ onRefresh }: Props) {
       setMappings(prev => prev.map(m => m.name === name ? { ...m, provider, modelId } : m));
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error');
-      load(); // revert on error
+      load();
     }
   };
 
+  const addRoute = async (name: string, provider: string, modelId: string) => {
+    if (mappings.some(m => m.name === name)) {
+      toast(`"${name}" already routed`, 'error');
+      return;
+    }
+    try {
+      await api.addMapping(name, provider, modelId);
+      toast(`"${name}" added to routes`);
+      load();
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+  };
+
   const removeMapping = async (name: string) => {
-    if (!confirm(`Remove "${name}"?`)) return;
-    try { await api.removeMapping(name); toast('Removed'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+    if (!confirm(`Remove route "${name}"?`)) return;
+    try { await api.removeMapping(name); toast('Route removed'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
   const removeModel = async (name: string) => {
@@ -66,64 +74,85 @@ export function Routes({ onRefresh }: Props) {
     try { await api.removeModel(name); toast('Removed from catalog'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
-  const addFromCatalog = async (name: string, provider: string, modelId: string) => {
-    try {
-      await api.addMapping(name, provider, modelId);
-      toast(`"${name}" added`);
-      load();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error');
-    }
+  const handlePickModel = (val: string) => {
+    setPickModel(val);
+    if (!val) return;
+    const model = models.find(m => m.name === val);
+    if (model) addRoute(model.name, model.provider, model.modelId);
   };
 
-  const createMapping = async () => {
-    if (!newName || !newProvider || !newModelId) { toast('All fields required', 'error'); return; }
-    try {
-      await api.addMapping(newName, newProvider, newModelId);
-      toast(`"${newName}" created`);
-      setNewName(''); setNewModelId('');
-      load();
-    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
-  };
+  const routedNames = new Set(mappings.map(m => m.name));
 
-  // Models without a mapping
-  const unmappedModels = models.filter(m => !mappings.some(map => map.name === m.name));
+  const Latency = ({ name }: { name: string }) => {
+    const t = tests[name];
+    if (t === undefined) return <button className="btn btn-xs" onClick={() => testIt(name)}>Test</button>;
+    if (t === null) return <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>;
+    if (t.ok) return <span className="badge badge-ok" title={t.preview ?? ''}>{t.latencyMs}ms</span>;
+    return <span className="badge badge-err" title={t.error ?? ''}>fail</span>;
+  };
 
   return (
     <>
-      {/* Quick create */}
-      <div className="quick-add card">
-        <div className="form-group">
-          <label>Name</label>
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. my-gpt" style={{ width: 140 }} />
-        </div>
-        <div className="form-group">
-          <label>Provider</label>
-          <select value={newProvider} onChange={e => setNewProvider(e.target.value)}>
-            <option value="">--</option>
-            {providers.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-          </select>
-        </div>
-        <div className="form-group">
-          <label>Upstream Model</label>
-          <input value={newModelId} onChange={e => setNewModelId(e.target.value)} placeholder="e.g. gpt-4o" style={{ width: 160 }} />
-        </div>
-        <button className="btn btn-primary" onClick={createMapping} style={{ marginBottom: 0 }}>Create</button>
-      </div>
-
       {msg && <div className={`toast toast-${msg.type}`} style={{ marginBottom: 8 }}>{msg.text}</div>}
 
-      {/* Active mappings */}
+      {/* ── Model Catalog (top) ── */}
+      <div className="card">
+        <div className="card-header">
+          <h2>Model Catalog ({models.length})</h2>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text2)' }}>Add to routes:</span>
+            <select
+              value={pickModel}
+              onChange={e => handlePickModel(e.target.value)}
+              style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)', fontSize: 12, fontFamily: 'inherit', minWidth: 180 }}
+            >
+              <option value="">-- pick a model --</option>
+              {models.filter(m => !routedNames.has(m.name)).map(m => (
+                <option key={m.name} value={m.name}>{m.name} ({m.provider})</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {models.length === 0 ? (
+          <div className="empty"><p>No models in catalog. Star (★) models from the Providers tab.</p></div>
+        ) : (
+          <table>
+            <thead><tr><th>Name</th><th>Provider</th><th>Upstream</th><th>Latency</th><th /></tr></thead>
+            <tbody>
+              {models.map(m => {
+                const routed = routedNames.has(m.name);
+                return (
+                  <tr key={m.name}>
+                    <td className="mono"><b>{m.name}</b></td>
+                    <td><span className="badge badge-provider">{m.provider}</span></td>
+                    <td className="mono">{m.modelId}</td>
+                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
+                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                      {!routed && (
+                        <button className="btn btn-xs" onClick={() => addRoute(m.name, m.provider, m.modelId)}>Add Route</button>
+                      )}
+                      {routed && <span className="badge badge-ok" style={{ marginRight: 8 }}>routed</span>}
+                      <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)}>Remove</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── Routes (bottom) ── */}
       <div className="card">
         <div className="card-header"><h2>Routes ({mappings.length})</h2></div>
         {mappings.length === 0 ? (
-          <div className="empty"><p>No routes yet. Import models from Providers or create one above.</p></div>
+          <div className="empty"><p>No routes yet. Add routes from the model catalog above.</p></div>
         ) : (
           <table>
             <thead><tr><th>Name</th><th>Provider</th><th>Upstream Model</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {mappings.map(m => {
-                const t = tests[m.name];
+                const modelOptions = models.filter(c => c.provider === m.provider);
                 return (
                   <tr key={m.name}>
                     <td className="mono"><b>{m.name}</b></td>
@@ -137,28 +166,16 @@ export function Routes({ onRefresh }: Props) {
                       </select>
                     </td>
                     <td>
-                      <input
-                        defaultValue={m.modelId}
-                        onBlur={e => { if (e.target.value !== m.modelId) updateMapping(m.name, m.provider, e.target.value); }}
-                        style={inputStyle}
-                        list={`dl-${m.name}`}
-                        key={m.name}
-                      />
-                      <datalist id={`dl-${m.name}`}>
-                        {models.filter(c => c.provider === m.provider).map(c => <option key={c.modelId} value={c.modelId} />)}
-                      </datalist>
+                      <select
+                        value={m.modelId}
+                        onChange={e => updateMapping(m.name, m.provider, e.target.value)}
+                        style={selectStyle}
+                      >
+                        {modelOptions.length === 0 && <option value={m.modelId}>{m.modelId}</option>}
+                        {modelOptions.map(c => <option key={c.modelId} value={c.modelId}>{c.modelId}</option>)}
+                      </select>
                     </td>
-                    <td style={{ width: 90 }}>
-                      {t === undefined ? (
-                        <button className="btn btn-xs" onClick={() => testIt(m.name)}>Test</button>
-                      ) : t === null ? (
-                        <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>
-                      ) : t.ok ? (
-                        <span className="badge badge-ok" title={t.preview ?? ''}>{t.latencyMs}ms</span>
-                      ) : (
-                        <span className="badge badge-err" title={t.error ?? ''}>fail</span>
-                      )}
-                    </td>
+                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>
                     </td>
@@ -169,29 +186,6 @@ export function Routes({ onRefresh }: Props) {
           </table>
         )}
       </div>
-
-      {/* Unmapped model catalog */}
-      {unmappedModels.length > 0 && (
-        <div className="card">
-          <div className="card-header"><h2>Model Catalog — not routed ({unmappedModels.length})</h2></div>
-          <table>
-            <thead><tr><th>Name</th><th>Provider</th><th>Upstream</th><th /></tr></thead>
-            <tbody>
-              {unmappedModels.map(m => (
-                <tr key={m.name}>
-                  <td className="mono">{m.name}</td>
-                  <td><span className="badge badge-provider">{m.provider}</span></td>
-                  <td className="mono">{m.modelId}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <button className="btn btn-xs" onClick={() => addFromCatalog(m.name, m.provider, m.modelId)}>Add Route</button>
-                    <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.name)} style={{ marginLeft: 4 }}>Remove</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </>
   );
 }
@@ -199,11 +193,5 @@ export function Routes({ onRefresh }: Props) {
 const selectStyle: React.CSSProperties = {
   padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
   background: 'var(--surface2)', color: 'var(--text)', fontSize: 12,
-  fontFamily: 'inherit', width: 110,
-};
-
-const inputStyle: React.CSSProperties = {
-  padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
-  background: 'var(--surface2)', color: 'var(--text)', fontSize: 12,
-  fontFamily: 'inherit', width: 160,
+  fontFamily: 'inherit', width: 140,
 };
