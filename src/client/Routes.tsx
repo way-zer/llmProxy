@@ -74,7 +74,7 @@ export function Routes({ onRefresh }: Props) {
     try { await api.removeModel(name); toast('Removed from catalog'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
-  const routedNames = new Set(mappings.map(m => m.name));
+  const routedSet = new Set(mappings.map(m => `${m.provider}|${m.modelId}`));
 
   const Latency = ({ name }: { name: string }) => {
     const t = tests[name];
@@ -98,7 +98,7 @@ export function Routes({ onRefresh }: Props) {
             <thead><tr><th>Name</th><th>Provider</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {models.map(m => {
-                const routed = routedNames.has(m.modelId);
+                const routed = routedSet.has(`${m.provider}|${m.modelId}`);
                 return (
                   <tr key={m.name}>
                     <td className="mono"><b>{m.modelId}</b></td>
