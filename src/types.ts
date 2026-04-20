@@ -13,10 +13,10 @@ export interface ModelDef {
 export interface AppConfig {
   port: number;
   providers: Record<string, ProviderConfig>;
-  /** Model catalog — saved upstream model references */
   models: Record<string, ModelDef>;
-  /** Routing mappings — client-facing names → provider/model. Can be quickly switched. */
   mappings: Record<string, ModelDef>;
+  /** Persisted scan results per provider */
+  scans: Record<string, { models: UpstreamModel[]; error?: string; scannedAt: number }>;
 }
 
 export interface ChatCompletionRequest {

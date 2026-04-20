@@ -1,58 +1,40 @@
 import type { UpstreamModelsResponse, UpstreamModel } from "./types";
-import { getConfig } from "./config";
+import { getConfig, getScan, saveScan } from "./config";
 
 export interface ScanResult {
   providerName: string;
   baseUrl: string;
   models: UpstreamModel[];
   error?: string;
-  scannedAt: number; // timestamp
+  scannedAt: number;
 }
 
-// In-memory scan cache
-const scanCache = new Map<string, ScanResult>();
-
+/** Get persisted scan from config. */
 export function getCachedScan(providerName: string): ScanResult | undefined {
-  return scanCache.get(providerName);
+  const s = getScan(providerName);
+  if (!s) return undefined;
+  const provider = getConfig().providers[providerName];
+  return {
+    providerName,
+    baseUrl: provider?.baseUrl ?? '',
+    models: s.models,
+    error: s.error,
+    scannedAt: s.scannedAt,
+  };
 }
 
-export function invalidateScanCache(providerName?: string): void {
-  if (providerName) {
-    scanCache.delete(providerName);
-  } else {
-    scanCache.clear();
-  }
-}
-
-export async function initScanCache(): Promise<void> {
-  const cfg = getConfig();
-  const names = Object.keys(cfg.providers);
-  if (names.length === 0) return;
-
-  console.log(`[scanner] Warming cache for ${names.length} provider(s)...`);
-  const results = await Promise.allSettled(names.map(name => scanProvider(name)));
-  let ok = 0;
-  let fail = 0;
-  results.forEach((r, i) => {
-    if (r.status === "fulfilled" && !r.value.error) ok++;
-    else fail++;
-  });
-  console.log(`[scanner] Cache warmup done: ${ok} ok, ${fail} failed`);
-}
-
+/** Scan upstream and persist result to config. */
 export async function scanProvider(providerName: string): Promise<ScanResult> {
   const cfg = getConfig();
   const provider = cfg.providers[providerName];
 
   if (!provider) {
     const result: ScanResult = {
-      providerName,
-      baseUrl: "",
-      models: [],
+      providerName, baseUrl: '', models: [],
       error: `Provider '${providerName}' not found`,
       scannedAt: Date.now(),
     };
-    scanCache.set(providerName, result);
+    saveScan(providerName, [], result.error);
     return result;
   }
 
@@ -69,49 +51,25 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "unknown error");
-      const result: ScanResult = {
-        providerName,
-        baseUrl: provider.baseUrl,
-        models: [],
-        error: `HTTP ${response.status}: ${errorText.slice(0, 300)}`,
-        scannedAt: Date.now(),
-      };
-      scanCache.set(providerName, result);
-      return result;
+      const error = `HTTP ${response.status}: ${errorText.slice(0, 300)}`;
+      saveScan(providerName, [], error);
+      return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
     }
 
     const data = (await response.json()) as UpstreamModelsResponse;
 
     if (!data.data || !Array.isArray(data.data)) {
-      const result: ScanResult = {
-        providerName,
-        baseUrl: provider.baseUrl,
-        models: [],
-        error: `Unexpected response format: expected { data: [...] }`,
-        scannedAt: Date.now(),
-      };
-      scanCache.set(providerName, result);
-      return result;
+      const error = `Unexpected response format: expected { data: [...] }`;
+      saveScan(providerName, [], error);
+      return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
     }
 
-    const result: ScanResult = {
-      providerName,
-      baseUrl: provider.baseUrl,
-      models: data.data.sort((a, b) => a.id.localeCompare(b.id)),
-      scannedAt: Date.now(),
-    };
-    scanCache.set(providerName, result);
-    return result;
+    const models = data.data.sort((a, b) => a.id.localeCompare(b.id));
+    saveScan(providerName, models);
+    return { providerName, baseUrl: provider.baseUrl, models, scannedAt: Date.now() };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const result: ScanResult = {
-      providerName,
-      baseUrl: provider.baseUrl,
-      models: [],
-      error: `Connection failed: ${message}`,
-      scannedAt: Date.now(),
-    };
-    scanCache.set(providerName, result);
-    return result;
+    const error = `Connection failed: ${err instanceof Error ? err.message : String(err)}`;
+    saveScan(providerName, [], error);
+    return { providerName, baseUrl: provider.baseUrl, models: [], error, scannedAt: Date.now() };
   }
 }

@@ -4,8 +4,9 @@ import {
   addMapping, updateMapping, removeMapping,
   addProvider, updateProvider, removeProvider,
   reloadConfigAsync,
+  clearScan,
 } from './config';
-import { scanProvider, getCachedScan, invalidateScanCache } from './scanner';
+import { scanProvider, getCachedScan } from './scanner';
 
 // ─── JSON helper ────────────────────────────────────────────
 
@@ -56,7 +57,7 @@ export async function handleUpdateProvider(name: string, request: Request, corsH
       return json({ error: `Provider '${name}' not found` }, corsHeaders, 404);
     }
     await saveConfig();
-    invalidateScanCache(name);
+    clearScan(name);
     scanProvider(name).then(r => {
       console.log(`[admin] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`);
     }).catch(() => {});
@@ -68,7 +69,7 @@ export async function handleUpdateProvider(name: string, request: Request, corsH
 
 export async function handleRemoveProvider(name: string, corsHeaders: Record<string, string>): Promise<Response> {
   if (removeProvider(name)) {
-    invalidateScanCache(name);
+    clearScan(name);
     await saveConfig();
     return json({ success: true, name }, corsHeaders);
   }
@@ -225,7 +226,6 @@ export async function handleTestModel(modelName: string, corsHeaders: Record<str
 
 export async function handleReload(corsHeaders: Record<string, string>): Promise<Response> {
   const cfg = await reloadConfigAsync();
-  invalidateScanCache();
   return json({
     success: true,
     models: Object.keys(cfg.models).length,

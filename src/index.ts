@@ -1,6 +1,5 @@
 import { loadConfig } from './config';
 import { startProxy } from './proxy';
-import { initScanCache } from './scanner';
 
 async function main(): Promise<void> {
   console.log('[init] Loading configuration...');
@@ -15,8 +14,8 @@ async function main(): Promise<void> {
   console.log(`[init] Model list:      GET  http://localhost:${server.port}/v1/models`);
   console.log('');
 
-  // Warm scan cache for all providers in background
-  initScanCache().catch(err => console.error('[init] Scan cache warmup error:', err));
+
+  console.log('[init] Ready. Press Ctrl+C to stop.');
 
   console.log('[init] Ready. Press Ctrl+C to stop.');
   await new Promise(() => {});
