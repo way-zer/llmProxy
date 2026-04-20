@@ -133,21 +133,21 @@ export function Routes({ onRefresh }: Props) {
                 return (
                   <tr key={m.name}>
                     <td className="mono"><b>{m.name}</b></td>
-                    <td colSpan={2}>
+                    <td>
                       <select
                         value={`${m.provider}|${m.modelId}`}
                         onChange={e => {
                           const [p, mid] = e.target.value.split('|');
                           updateMapping(m.name, p!, mid!);
                         }}
-                        style={{ ...selectStyle, width: 240 }}
+                        style={{ ...selectStyle, width: '100%', maxWidth: 260 }}
                       >
                         {models.map(c => (
                           <option key={c.name} value={`${c.provider}|${c.modelId}`}>{c.modelId} ({c.provider})</option>
                         ))}
                       </select>
                     </td>
-                    <td style={{ width: 90 }}><Latency name={m.name} /></td>
+                    <td><Latency name={m.name} /></td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>
                     </td>
