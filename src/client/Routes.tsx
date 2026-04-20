@@ -138,11 +138,11 @@ export function Routes({ onRefresh }: Props) {
                     </td>
                     <td>
                       <input
-                        value={m.modelId}
-                        onChange={e => updateMapping(m.name, m.provider, e.target.value)}
-                        onBlur={e => updateMapping(m.name, m.provider, e.target.value)}
+                        defaultValue={m.modelId}
+                        onBlur={e => { if (e.target.value !== m.modelId) updateMapping(m.name, m.provider, e.target.value); }}
                         style={inputStyle}
                         list={`dl-${m.name}`}
+                        key={m.name}
                       />
                       <datalist id={`dl-${m.name}`}>
                         {models.filter(c => c.provider === m.provider).map(c => <option key={c.modelId} value={c.modelId} />)}

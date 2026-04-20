@@ -14,9 +14,9 @@ export function Overview() {
       <div className="card">
         <div className="card-header"><h2>Concepts</h2></div>
         <div style={{ fontSize: 13, color: 'var(--text2)', lineHeight: 2 }}>
-          <p><b style={{ color: 'var(--text)' }}>Models (模型)</b> — saved upstream references, like bookmarks. Created by scanning providers.</p>
-          <p><b style={{ color: 'var(--text)' }}>Mappings (映射)</b> — routing table. Client name → provider/model. Quickly switchable.</p>
-          <p>Client sends <code className="mono" style={{ color: 'var(--accent2)' }}>model: "my-gpt"</code> → Mapping → upstream.</p>
+          <p><b style={{ color: 'var(--text)' }}>Providers</b> — upstream API endpoints. Scan to discover available models.</p>
+          <p><b style={{ color: 'var(--text)' }}>Routes</b> — the routing table. Each entry maps a client-facing name to a provider + upstream model. Provider and model can be changed inline.</p>
+          <p>Star (★) models from scan results to add them to the catalog and auto-create routes.</p>
         </div>
       </div>
       <div className="card">

@@ -13,8 +13,6 @@ async function main(): Promise<void> {
   console.log(`[init] Chat completions: POST http://localhost:${server.port}/v1/chat/completions`);
   console.log(`[init] Model list:      GET  http://localhost:${server.port}/v1/models`);
   console.log('');
-
-
   console.log('[init] Ready. Press Ctrl+C to stop.');
   await new Promise(() => { });
 }

@@ -4,6 +4,7 @@ import {
   addMapping, updateMapping, removeMapping,
   addProvider, updateProvider, removeProvider,
   reloadConfigAsync,
+  lookupModel,
 } from './config';
 import { scanProvider, getCachedScan } from './scanner';
 import { clearScan } from './scanstore';
@@ -182,7 +183,6 @@ export async function handleRemoveMapping(name: string, corsHeaders: Record<stri
 // ─── Test ───────────────────────────────────────────────────
 
 export async function handleTestModel(modelName: string, corsHeaders: Record<string, string>): Promise<Response> {
-  const { lookupModel } = await import('./config');
   const upstream = lookupModel(modelName);
   if (!upstream) return json({ error: `Model '${modelName}' not found` }, corsHeaders, 404);
 

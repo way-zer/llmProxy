@@ -181,7 +181,7 @@ export function Providers({ onRefresh }: Props) {
                     {scan === undefined ? (
                       <div className="empty"><p>Loading...</p></div>
                     ) : scan === null || scan.error ? (
-                      <div className="empty"><p style={{ color: 'var(--red)' }}>{scan?.error ?? 'Failed to load'}</p></div>
+                      <div className="empty"><p style={{ color: 'var(--red)' }}>{scan?.error || 'Not scanned yet — click Re-scan'}</p></div>
                     ) : scan.models.length === 0 ? (
                       <div className="empty"><p>No models found upstream.</p></div>
                     ) : (
