@@ -112,15 +112,15 @@ export function Providers({ onRefresh }: Props) {
   };
 
   const toggleStar = async (provider: string, modelId: string) => {
-    const catKey = `${provider}/${modelId}`;
-    const starred = catalogSet.has(catKey);
+    const key = `${provider}|${modelId}`;
+    const starred = catalogSet.has(key);
     if (starred) {
-      setCatalog(prev => prev.filter(m => m.name !== catKey));
+      setCatalog(prev => prev.filter(m => !(m.provider === provider && m.modelId === modelId)));
     } else {
-      setCatalog(prev => [...prev, { name: catKey, provider, modelId }]);
+      setCatalog(prev => [...prev, { provider, modelId }]);
     }
     try {
-      if (starred) await api.removeModel(catKey);
+      if (starred) await api.removeModel(provider, modelId);
       else await api.importOne(provider, modelId);
     } catch (e) {
       toast(e instanceof Error ? e.message : String(e), 'error');
@@ -128,7 +128,7 @@ export function Providers({ onRefresh }: Props) {
     }
   };
 
-  const catalogSet = new Set(catalog.map(m => m.name));
+  const catalogSet = new Set(catalog.map(m => `${m.provider}|${m.modelId}`));
 
   return (
     <div className="card">

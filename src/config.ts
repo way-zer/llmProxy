@@ -6,7 +6,7 @@ const CONFIG_PATH = join(import.meta.dir, '..', 'config.json');
 let config: AppConfig = {
   port: 3000,
   providers: {},
-  models: {},
+  models: [],
   mappings: {},
 };
 
@@ -21,9 +21,10 @@ export async function loadConfig(): Promise<AppConfig> {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
     if (!config.mappings) config.mappings = {};
+    if (!Array.isArray(config.models)) config.models = [];
   } else {
     console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
-    config = { port: 3000, providers: {}, models: {}, mappings: {} };
+    config = { port: 3000, providers: {}, models: [], mappings: {} };
     await saveConfig();
   }
   return config;
@@ -40,6 +41,7 @@ export async function reloadConfigAsync(): Promise<AppConfig> {
     const text = await file.text();
     config = JSON.parse(text) as AppConfig;
     if (!config.mappings) config.mappings = {};
+    if (!Array.isArray(config.models)) config.models = [];
   }
   return config;
 }
@@ -58,9 +60,7 @@ export function updateProvider(name: string, baseUrl: string, apiKey: string): b
 
 export function removeProvider(name: string): boolean {
   if (!config.providers[name]) return false;
-  for (const [mn, m] of Object.entries(config.models)) {
-    if (m.provider === name) delete config.models[mn];
-  }
+  config.models = config.models.filter(m => m.provider !== name);
   for (const [kn, m] of Object.entries(config.mappings)) {
     if (m.provider === name) delete config.mappings[kn];
   }
@@ -70,14 +70,16 @@ export function removeProvider(name: string): boolean {
 
 // ─── Model definitions (收藏的上游模型) ───────────────────────
 
-export function addModelDef(name: string, provider: string, modelId: string): void {
-  config.models[name] = { provider, modelId };
+export function addModelDef(provider: string, modelId: string): void {
+  if (!config.models.some(m => m.provider === provider && m.modelId === modelId)) {
+    config.models.push({ provider, modelId });
+  }
 }
 
-export function removeModelDef(name: string): boolean {
-  if (!config.models[name]) return false;
-  delete config.models[name];
-  return true;
+export function removeModelDef(provider: string, modelId: string): boolean {
+  const len = config.models.length;
+  config.models = config.models.filter(m => !(m.provider === provider && m.modelId === modelId));
+  return config.models.length < len;
 }
 
 // ─── Mappings (客户端路由表, id → provider/model) ──────────────
@@ -111,7 +113,7 @@ export function lookupModel(clientName: string): { provider: ProviderConfig; ups
     if (provider) return { provider, upstreamModelId: mapping.modelId };
   }
   // Fall back to model catalog
-  const def = config.models[clientName];
+  const def = config.models.find(m => m.modelId === clientName);
   if (def) {
     const provider = config.providers[def.provider];
     if (provider) return { provider, upstreamModelId: def.modelId };

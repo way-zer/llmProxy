@@ -52,9 +52,7 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       '/api/models': {
         GET: () => handleListModelDefs(CORS),
         POST: req => handleAddModelDef(req, CORS),
-      },
-      '/api/models/:name': {
-        DELETE: req => handleRemoveModelDef(D(req.params.name), CORS),
+        DELETE: req => handleRemoveModelDef(req, CORS),
       },
 
       '/api/mappings': {
@@ -105,7 +103,7 @@ async function serve(filePath: string): Promise<Response> {
 
 function health(): Response {
   const c = getConfig();
-  return json({ status: 'ok', models: Object.keys(c.models).length, mappings: Object.keys(c.mappings).length, providers: Object.keys(c.providers).length, port: c.port });
+  return json({ status: 'ok', models: c.models.length, mappings: Object.keys(c.mappings).length, providers: Object.keys(c.providers).length, port: c.port });
 }
 
 function clientModels(): Response {
@@ -113,7 +111,7 @@ function clientModels(): Response {
   const seen = new Set<string>();
   const data: Array<{ id: string; object: string; created: number; owned_by: string }> = [];
   for (const [name, m] of Object.entries(c.mappings)) { data.push({ id: name, object: 'model', created: 0, owned_by: m.provider }); seen.add(name); }
-  for (const [name, m] of Object.entries(c.models)) { if (!seen.has(name)) data.push({ id: name, object: 'model', created: 0, owned_by: m.provider }); }
+  for (const m of c.models) { if (!seen.has(m.modelId)) data.push({ id: m.modelId, object: 'model', created: 0, owned_by: m.provider }); }
   return json({ object: 'list', data });
 }
 

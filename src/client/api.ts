@@ -13,7 +13,6 @@ export interface ProviderInfo {
 }
 
 export interface ModelDef {
-  name: string;
   provider: string;
   modelId: string;
 }
@@ -82,7 +81,7 @@ export const api = {
 
   // Models
   listModels: () => req<ModelDef[]>('GET', '/api/models'),
-  removeModel: (name: string) => req<{ success: boolean }>('DELETE', `/api/models/${encodeURIComponent(name)}`),
+  removeModel: (provider: string, modelId: string) => req<{ success: boolean }>('DELETE', `/api/models?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`),
 
   // Mappings
   listMappings: () => req<MappingDef[]>('GET', '/api/mappings'),

@@ -13,7 +13,7 @@ export interface ModelDef {
 export interface AppConfig {
   port: number;
   providers: Record<string, ProviderConfig>;
-  models: Record<string, ModelDef>;
+  models: ModelDef[];
   mappings: Record<string, ModelDef>;
 }
 
