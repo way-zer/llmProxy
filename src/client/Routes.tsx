@@ -30,6 +30,11 @@ export function Routes({ onRefresh }: Props) {
     catch (e) { setTests(prev => ({ ...prev, [name]: { modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
   };
 
+  const testDirect = async (provider: string, modelId: string) => {
+    setTests(prev => ({ ...prev, [modelId]: null }));
+    try { const r = await api.testDirect(provider, modelId); setTests(prev => ({ ...prev, [modelId]: r })); }
+    catch (e) { setTests(prev => ({ ...prev, [modelId]: { modelName: modelId, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
+  };
   const updateMapping = async (name: string, provider: string, modelId: string) => {
     try { await api.updateMapping(name, provider, modelId); setMappings(prev => prev.map(m => m.name === name ? { ...m, provider, modelId } : m)); }
     catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); load(); }
@@ -85,7 +90,12 @@ export function Routes({ onRefresh }: Props) {
                   <tr key={kid(m)}>
                     <td className="mono"><b>{m.modelId}</b></td>
                     <td><span className="badge badge-provider">{m.provider}</span></td>
-                    <td><Latency name={m.modelId} /></td>
+                    <td>
+                      {tests[m.modelId] === undefined && <button className="btn btn-xs" onClick={() => testDirect(m.provider, m.modelId)}>Test</button>}
+                      {tests[m.modelId] === null && <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>}
+                      {tests[m.modelId]?.ok && <span className="badge badge-ok" title={tests[m.modelId]!.preview ?? ''}>{tests[m.modelId]!.latencyMs}ms</span>}
+                      {tests[m.modelId] && !tests[m.modelId]!.ok && <span className="badge badge-err" title={tests[m.modelId]!.error ?? ''}>fail</span>}
+                    </td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {!routed && <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>}
                       {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}

@@ -6,8 +6,9 @@ import {
   reloadConfigAsync,
   lookupModel,
 } from './config';
-import { scanProvider, getCachedScan } from './scanner';
+import type { ProviderConfig } from './types';
 import { clearScan } from './scanstore';
+import { getCachedScan, scanProvider } from './scanner';
 
 function json(data: unknown, headers: Record<string, string>, status = 200): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
@@ -39,7 +40,7 @@ export async function handleAddProvider(request: Request, corsHeaders: Record<st
     if (!name || !baseUrl) return json({ error: 'name and baseUrl are required' }, corsHeaders, 400);
     addProvider(name, baseUrl, apiKey ?? '');
     await saveConfig();
-    scanProvider(name).then(r => console.log(`[admin] Auto-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)).catch(() => {});
+    scanProvider(name).then(r => console.log(`[admin] Auto-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)).catch(() => { });
     return json({ success: true, name }, corsHeaders);
   } catch { return json({ error: 'Invalid JSON body' }, corsHeaders, 400); }
 }
@@ -51,7 +52,7 @@ export async function handleUpdateProvider(name: string, request: Request, corsH
     if (!updateProvider(name, baseUrl, apiKey ?? '')) return json({ error: `Provider '${name}' not found` }, corsHeaders, 404);
     await saveConfig();
     await clearScan(name);
-    scanProvider(name).then(r => console.log(`[admin] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)).catch(() => {});
+    scanProvider(name).then(r => console.log(`[admin] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)).catch(() => { });
     return json({ success: true, name }, corsHeaders);
   } catch { return json({ error: 'Invalid JSON body' }, corsHeaders, 400); }
 }
@@ -158,28 +159,44 @@ export async function handleRemoveMapping(name: string, corsHeaders: Record<stri
 
 // ─── Test ───────────────────────────────────────────────────
 
-export async function handleTestModel(modelName: string, corsHeaders: Record<string, string>): Promise<Response> {
-  const upstream = lookupModel(modelName);
-  if (!upstream) return json({ error: `Model '${modelName}' not found` }, corsHeaders, 404);
-
-  const upstreamUrl = `${upstream.provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
+async function doTest(provider: ProviderConfig, upstreamModelId: string, label: string): Promise<Response> {
+  const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`;
   const start = performance.now();
   try {
-    const res = await fetch(upstreamUrl, {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstream.provider.apiKey}` },
-      body: JSON.stringify({ model: upstream.upstreamModelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 50, stream: false }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provider.apiKey}` },
+      body: JSON.stringify({ model: upstreamModelId, messages: [{ role: 'user', content: 'Hi' }], max_tokens: 50, stream: false }),
     });
     const latencyMs = Math.round(performance.now() - start);
     const text = await res.text();
-    if (!res.ok) return json({ modelName, latencyMs, statusCode: res.status, ok: false, error: text.slice(0, 300) }, corsHeaders);
+    if (!res.ok) return new Response(JSON.stringify({ modelName: label, latencyMs, statusCode: res.status, ok: false, error: text.slice(0, 300) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     let preview = '';
     try { preview = JSON.parse(text).choices?.[0]?.message?.content?.slice(0, 200) ?? text.slice(0, 200); } catch { preview = text.slice(0, 200); }
-    return json({ modelName, latencyMs, statusCode: res.status, ok: true, preview }, corsHeaders);
+    return new Response(JSON.stringify({ modelName: label, latencyMs, statusCode: res.status, ok: true, preview }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (err) {
     const latencyMs = Math.round(performance.now() - start);
-    return json({ modelName, latencyMs, ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders);
+    return new Response(JSON.stringify({ modelName: label, latencyMs, ok: false, error: err instanceof Error ? err.message : String(err) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   }
+}
+
+export async function handleTestModel(modelName: string, corsHeaders: Record<string, string>): Promise<Response> {
+  const upstream = lookupModel(modelName);
+  if (!upstream) return json({ error: `Model '${modelName}' not found` }, corsHeaders, 404);
+  const res = await doTest(upstream.provider, upstream.upstreamModelId, modelName);
+  // Copy CORS headers
+  const body = await res.json();
+  return json(body, corsHeaders);
+}
+
+export async function handleTestDirect(request: Request, corsHeaders: Record<string, string>): Promise<Response> {
+  const { provider, modelId } = await request.json();
+  if (!provider || !modelId) return json({ error: 'provider and modelId required' }, corsHeaders, 400);
+  const p = getConfig().providers[provider];
+  if (!p) return json({ error: `Provider '${provider}' not found` }, corsHeaders, 404);
+  const res = await doTest(p, modelId, modelId);
+  const body = await res.json();
+  return json(body, corsHeaders);
 }
 
 // ─── Reload ─────────────────────────────────────────────────

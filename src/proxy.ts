@@ -7,9 +7,9 @@ import {
   handleListModelDefs, handleAddModelDef, handleRemoveModelDef,
   handleListMappings, handleAddMapping, handleUpdateMapping, handleRemoveMapping,
   handleTestModel,
+  handleTestDirect,
   handleReload,
 } from './admin';
-
 const PUBLIC_DIR = join(import.meta.dir, '..', 'public');
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,6 +66,9 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
 
       '/api/test/:name': {
         POST: req => handleTestModel(D(req.params.name), CORS),
+      },
+      '/api/test-direct': {
+        POST: req => handleTestDirect(req, CORS),
       },
       '/api/reload': { POST: () => handleReload(CORS) },
 

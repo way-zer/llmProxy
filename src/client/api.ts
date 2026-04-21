@@ -94,4 +94,5 @@ export const api = {
 
   // Test
   test: (name: string) => req<TestResult>('POST', `/api/test/${encodeURIComponent(name)}`),
+  testDirect: (provider: string, modelId: string) => req<TestResult>('POST', '/api/test-direct', { provider, modelId }),
 };
