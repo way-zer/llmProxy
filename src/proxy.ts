@@ -10,6 +10,7 @@ import {
   handleTestDirect,
   handleReload,
 } from './admin';
+
 const PUBLIC_DIR = join(import.meta.dir, '..', 'public');
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -19,11 +20,14 @@ const CORS = {
 
 const D = decodeURIComponent;
 
+// Bun bundles HTML + React automatically on import
+import dashboardHtml from '../public/index.html';
+
 export function startProxy(port: number): ReturnType<typeof Bun.serve> {
   const server = Bun.serve({
     port,
     routes: {
-      '/': { GET: async () => await serve('index.html') },
+      '/': { GET: () => new Response(dashboardHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8', ...CORS } }) },
       '/health': { GET: () => health() },
       '/api/health': { GET: () => health() },
       '/v1/models': { GET: () => clientModels() },
@@ -72,16 +76,14 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       },
       '/api/reload': { POST: () => handleReload(CORS) },
 
-      // Legacy
       '/api/scan/:name': { POST: req => handleScanProvider(D(req.params.name), CORS) },
       '/api/scan-add/:name': { POST: req => handleImportAll(D(req.params.name), CORS) },
     },
     async fetch(req): Promise<Response> {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-      // Static files
       if (req.method === 'GET') {
-        const p = new URL(req.url).pathname.slice(1);
-        if (p && !p.startsWith('api/') && !p.startsWith('v1/')) return await serve(p);
+        const fp = new URL(req.url).pathname.slice(1);
+        if (fp && !fp.startsWith('api/') && !fp.startsWith('v1/')) return await serve(fp);
       }
       return new Response('Not Found', { status: 404, headers: CORS });
     },
