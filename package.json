@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run src/index.ts",
+    "start": "bun run build && bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "build": "bun build src/client/index.tsx --outdir public/dist --target browser --minify --sourcemap=linked"
   },
