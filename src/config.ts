@@ -14,14 +14,24 @@ export function getConfig(): Readonly<AppConfig> {
   return config;
 }
 
+// ─── Persistence ────────────────────────────────────────────
+
+async function readConfigFile(): Promise<AppConfig | null> {
+  const file = Bun.file(CONFIG_PATH);
+  if (!(await file.exists())) return null;
+  const raw: Partial<AppConfig> = JSON.parse(await file.text());
+  return {
+    port: raw.port ?? 3000,
+    providers: raw.providers ?? {},
+    models: Array.isArray(raw.models) ? raw.models : [],
+    mappings: raw.mappings ?? {},
+  };
+}
 
 export async function loadConfig(): Promise<AppConfig> {
-  const file = Bun.file(CONFIG_PATH);
-  if (await file.exists()) {
-    const text = await file.text();
-    config = JSON.parse(text) as AppConfig;
-    if (!config.mappings) config.mappings = {};
-    if (!Array.isArray(config.models)) config.models = [];
+  const loaded = await readConfigFile();
+  if (loaded) {
+    config = loaded;
   } else {
     console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
     config = { port: 3000, providers: {}, models: [], mappings: {} };
@@ -31,18 +41,12 @@ export async function loadConfig(): Promise<AppConfig> {
 }
 
 export async function saveConfig(): Promise<void> {
-  const text = JSON.stringify(config, null, 2);
-  await Bun.write(CONFIG_PATH, text);
+  await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
 export async function reloadConfigAsync(): Promise<AppConfig> {
-  const file = Bun.file(CONFIG_PATH);
-  if (await file.exists()) {
-    const text = await file.text();
-    config = JSON.parse(text) as AppConfig;
-    if (!config.mappings) config.mappings = {};
-    if (!Array.isArray(config.models)) config.models = [];
-  }
+  const loaded = await readConfigFile();
+  if (loaded) config = loaded;
   return config;
 }
 
@@ -68,7 +72,7 @@ export function removeProvider(name: string): boolean {
   return true;
 }
 
-// ─── Model definitions (收藏的上游模型) ───────────────────────
+// ─── Model definitions ──────────────────────────────────────
 
 export function addModelDef(provider: string, modelId: string): void {
   if (!config.models.some(m => m.provider === provider && m.modelId === modelId)) {
@@ -82,7 +86,7 @@ export function removeModelDef(provider: string, modelId: string): boolean {
   return config.models.length < len;
 }
 
-// ─── Mappings (客户端路由表, id → provider/model) ──────────────
+// ─── Mappings ───────────────────────────────────────────────
 
 export function addMapping(name: string, provider: string, modelId: string): boolean {
   if (!config.providers[provider]) return false;
@@ -103,20 +107,26 @@ export function removeMapping(name: string): boolean {
   return true;
 }
 
-// ─── Lookup (mapping → provider, fallback model → provider) ───
+// ─── Lookup ─────────────────────────────────────────────────
 
 export function lookupModel(clientName: string): { provider: ProviderConfig; upstreamModelId: string } | null {
-  // Check routing mappings first
+  // routing mappings first
   const mapping = config.mappings[clientName];
   if (mapping) {
     const provider = config.providers[mapping.provider];
     if (provider) return { provider, upstreamModelId: mapping.modelId };
   }
-  // Fall back to model catalog
+  // fallback: model catalog
   const def = config.models.find(m => m.modelId === clientName);
   if (def) {
     const provider = config.providers[def.provider];
     if (provider) return { provider, upstreamModelId: def.modelId };
   }
   return null;
+}
+
+export function listModelNames(): string[] {
+  const names = new Set(Object.keys(config.mappings));
+  for (const m of config.models) names.add(m.modelId);
+  return [...names];
 }

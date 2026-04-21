@@ -4,7 +4,7 @@ import { startProxy } from './proxy';
 async function main(): Promise<void> {
   console.log('[init] Loading configuration...');
   const config = await loadConfig();
-  console.log(`[init] Loaded ${Object.keys(config.models).length} model(s), ${Object.keys(config.providers).length} provider(s)`);
+  console.log(`[init] Loaded ${config.models.length} model(s), ${Object.keys(config.providers).length} provider(s)`);
 
   console.log('[init] Starting proxy server...');
   const server = startProxy(config.port);

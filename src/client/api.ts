@@ -75,9 +75,9 @@ export const api = {
   getScan: (provider: string) => req<ScanResult>('GET', `/api/providers/${encodeURIComponent(provider)}/scan`),
   rescan: (provider: string) => req<ScanResult>('POST', `/api/providers/${encodeURIComponent(provider)}/scan`),
   importAll: (provider: string) =>
-    req<{ success: boolean; total: number; added: number; skipped: number }>('POST', `/api/providers/${encodeURIComponent(provider)}/import-all`),
+    req<{ success: boolean; total: number; added: number; skipped: number; mapped: number }>('POST', `/api/providers/${encodeURIComponent(provider)}/import-all`),
   importOne: (provider: string, modelId: string) =>
-    req<{ success: boolean }>('POST', `/api/providers/${encodeURIComponent(provider)}/import/${encodeURIComponent(modelId)}`),
+    req<{ success: boolean }>('POST', `/api/providers/${encodeURIComponent(provider)}/import`, { modelId }),
 
   // Models
   listModels: () => req<ModelDef[]>('GET', '/api/models'),

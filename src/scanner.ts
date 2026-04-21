@@ -10,6 +10,10 @@ export interface ScanResult {
   scannedAt: number;
 }
 
+function result(providerName: string, baseUrl: string, models: UpstreamModel[], error?: string): ScanResult {
+  return { providerName, baseUrl, models, error, scannedAt: Date.now() };
+}
+
 export async function getCachedScan(providerName: string): Promise<ScanResult | undefined> {
   const s = await getScan(providerName);
   if (!s) return undefined;
@@ -28,7 +32,7 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
   const provider = cfg.providers[providerName];
 
   if (!provider) {
-    const r: ScanResult = { providerName, baseUrl: '', models: [], error: `Provider '${providerName}' not found`, scannedAt: Date.now() };
+    const r = result(providerName, '', [], `Provider '${providerName}' not found`);
     await saveScan(providerName, [], r.error);
     return r;
   }
@@ -43,20 +47,19 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
       const t = await res.text().catch(() => 'unknown error');
       const err = `HTTP ${res.status}: ${t.slice(0, 300)}`;
       await saveScan(providerName, [], err);
-      return { providerName, baseUrl: provider.baseUrl, models: [], error: err, scannedAt: Date.now() };
+      return result(providerName, provider.baseUrl, [], err);
     }
     const data = (await res.json()) as UpstreamModelsResponse;
     if (!data.data?.length) {
       await saveScan(providerName, []);
-      return { providerName, baseUrl: provider.baseUrl, models: [], scannedAt: Date.now() };
+      return result(providerName, provider.baseUrl, []);
     }
     const models = data.data.sort((a, b) => a.id.localeCompare(b.id));
     await saveScan(providerName, models);
-    return { providerName, baseUrl: provider.baseUrl, models, scannedAt: Date.now() };
+    return result(providerName, provider.baseUrl, models);
   } catch (err) {
     const msg = `Connection failed: ${err instanceof Error ? err.message : String(err)}`;
     await saveScan(providerName, [], msg);
-    return { providerName, baseUrl: provider.baseUrl, models: [], error: msg, scannedAt: Date.now() };
+    return result(providerName, provider.baseUrl, [], msg);
   }
 }
-

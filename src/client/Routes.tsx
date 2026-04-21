@@ -4,11 +4,28 @@ import type { MappingDef, ModelDef, ProviderInfo, TestResult } from './api';
 
 interface Props { onRefresh: () => void; }
 
+const modelKey = (m: ModelDef) => `${m.provider}|${m.modelId}`;
+
+interface LatencyProps { name: string }
+const Latency = ({ name }: LatencyProps) => {
+  const [result, setResult] = useState<TestResult | null | undefined>(undefined);
+  const test = async () => {
+    setResult(null);
+    try { setResult(await api.test(name)); }
+    catch (e) { setResult({ modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) }); }
+  };
+  if (result === undefined) return <button className="btn btn-xs" onClick={test}>Test</button>;
+  if (result === null) return <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>;
+  if (result.ok) return <span className="badge badge-ok" title={`${result.preview ?? ''}&#10;Click to re-test`} onClick={test} style={{ cursor: 'pointer' }}>{result.latencyMs}ms</span>;
+  return <span className="badge badge-err" title={result.error ?? 'Unknown error'} onClick={test} style={{ cursor: 'pointer' }}>{result.error ? result.error.slice(0, 40) + (result.error.length > 40 ? '…' : '') : 'fail'}</span>;
+};
+
+
 export function Routes({ onRefresh }: Props) {
   const [mappings, setMappings] = useState<MappingDef[]>([]);
   const [models, setModels] = useState<ModelDef[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [tests, setTests] = useState<Record<string, TestResult | null>>({});
+  const [directTests, setDirectTests] = useState<Record<string, TestResult | null>>({});
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
   const toast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
@@ -24,17 +41,16 @@ export function Routes({ onRefresh }: Props) {
 
   useEffect(() => { load(); }, [load]);
 
-  const testIt = async (name: string) => {
-    setTests(prev => ({ ...prev, [name]: null }));
-    try { const r = await api.test(name); setTests(prev => ({ ...prev, [name]: r })); }
-    catch (e) { setTests(prev => ({ ...prev, [name]: { modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
+  const testDirect = async (provider: string, modelId: string) => {
+    const key = `${provider}|${modelId}`;
+    setDirectTests(prev => ({ ...prev, [key]: null }));
+    try {
+      const result = await api.testDirect(provider, modelId);
+      setDirectTests(prev => ({ ...prev, [key]: result }));
+    }
+    catch (e) { setDirectTests(prev => ({ ...prev, [key]: { modelName: modelId, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
   };
 
-  const testDirect = async (provider: string, modelId: string) => {
-    setTests(prev => ({ ...prev, [modelId]: null }));
-    try { const r = await api.testDirect(provider, modelId); setTests(prev => ({ ...prev, [modelId]: r })); }
-    catch (e) { setTests(prev => ({ ...prev, [modelId]: { modelName: modelId, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
-  };
   const updateMapping = async (name: string, provider: string, modelId: string) => {
     try { await api.updateMapping(name, provider, modelId); setMappings(prev => prev.map(m => m.name === name ? { ...m, provider, modelId } : m)); }
     catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); load(); }
@@ -61,15 +77,14 @@ export function Routes({ onRefresh }: Props) {
 
   const routedSet = new Set(mappings.map(m => `${m.provider}|${m.modelId}`));
 
-  const Latency = ({ name }: { name: string }) => {
-    const t = tests[name];
-    if (t === undefined) return <button className="btn btn-xs" onClick={() => testIt(name)}>Test</button>;
+  const DirectLatency = ({ provider, modelId }: { provider: string; modelId: string }) => {
+    const key = `${provider}|${modelId}`;
+    const t = directTests[key];
+    if (t === undefined) return <button className="btn btn-xs" onClick={() => testDirect(provider, modelId)}>Test</button>;
     if (t === null) return <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>;
-    if (t.ok) return <span className="badge badge-ok" title={t.preview ?? ''}>{t.latencyMs}ms</span>;
-    return <span className="badge badge-err" title={t.error ?? ''}>fail</span>;
+    if (t.ok) return <span className="badge badge-ok" title={`${t.preview ?? ''}&#10;Click to re-test`} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.latencyMs}ms</span>;
+    return <span className="badge badge-err" title={t.error ?? 'Unknown error'} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.error ? t.error.slice(0, 40) + (t.error.length > 40 ? '…' : '') : 'fail'}</span>;
   };
-
-  const kid = (m: ModelDef) => `${m.provider}|${m.modelId}`;
 
   return (
     <>
@@ -85,17 +100,12 @@ export function Routes({ onRefresh }: Props) {
             <thead><tr><th>Name</th><th>Provider</th><th>Latency</th><th /></tr></thead>
             <tbody>
               {models.map(m => {
-                const routed = routedSet.has(kid(m));
+                const routed = routedSet.has(modelKey(m));
                 return (
-                  <tr key={kid(m)}>
+                  <tr key={modelKey(m)}>
                     <td className="mono"><b>{m.modelId}</b></td>
                     <td><span className="badge badge-provider">{m.provider}</span></td>
-                    <td>
-                      {tests[m.modelId] === undefined && <button className="btn btn-xs" onClick={() => testDirect(m.provider, m.modelId)}>Test</button>}
-                      {tests[m.modelId] === null && <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>}
-                      {tests[m.modelId]?.ok && <span className="badge badge-ok" title={tests[m.modelId]!.preview ?? ''}>{tests[m.modelId]!.latencyMs}ms</span>}
-                      {tests[m.modelId] && !tests[m.modelId]!.ok && <span className="badge badge-err" title={tests[m.modelId]!.error ?? ''}>fail</span>}
-                    </td>
+                    <td><DirectLatency provider={m.provider} modelId={m.modelId} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                       {!routed && <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>}
                       {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}
@@ -128,7 +138,7 @@ export function Routes({ onRefresh }: Props) {
                       style={{ ...selectStyle, width: '100%', maxWidth: 260 }}
                     >
                       {models.map(c => (
-                        <option key={kid(c)} value={`${c.provider}|${c.modelId}`}>{c.modelId} ({c.provider})</option>
+                        <option key={modelKey(c)} value={`${c.provider}|${c.modelId}`}>{c.modelId} ({c.provider})</option>
                       ))}
                     </select>
                   </td>
