@@ -20,8 +20,6 @@ export async function handleListProviders(): Promise<Response> {
     const scan = await getCachedScan(name);
     return {
       name, baseUrl: p.baseUrl,
-      apiKey: p.apiKey ? p.apiKey.slice(0, 6) + '...' + p.apiKey.slice(-4) : '',
-      hasFullKey: !!p.apiKey,
       modelCount: Object.keys(p.models).length,
       scanStatus: scan ? (scan.error ? 'error' : 'ok') : 'pending',
       scanError: scan?.error ?? null,

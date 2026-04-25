@@ -3,8 +3,6 @@
 export interface ProviderInfo {
   name: string;
   baseUrl: string;
-  apiKey: string;
-  hasFullKey: boolean;
   modelCount: number;
   scanStatus: 'ok' | 'error' | 'pending';
   scanError: string | null;
