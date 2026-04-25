@@ -121,7 +121,6 @@ async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
     return json({
       error: {
         message: `模型 '${body.model}' 未找到。可用: ${names.join(', ') || '无'}`,
-      },
         type: 'model_not_found',
       },
     }, 404);
