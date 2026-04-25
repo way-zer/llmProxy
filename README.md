@@ -1,4 +1,4 @@
-# llmProxy
+# llmSimpleProxy
 
 轻量级 LLM API 代理，将 OpenAI 兼容请求路由到多个上游 provider，附带 Web 管理面板。
 

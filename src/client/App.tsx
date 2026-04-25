@@ -108,7 +108,7 @@ export function App() {
       )}
 
       <header className="header">
-        <h1><span>llm</span>Proxy</h1>
+        <h1><span>llm</span>SimpleProxy</h1>
         <nav className="header-stats">
           {error ? (
             <span style={{ color: 'var(--red)' }}>{error}</span>
