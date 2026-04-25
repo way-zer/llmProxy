@@ -2,22 +2,22 @@ import { loadConfig, getAllModels } from './config';
 import { startProxy } from './proxy';
 
 async function main(): Promise<void> {
-  console.log('[init] Loading configuration...');
+  console.log('[启动] 正在加载配置...');
   const config = await loadConfig();
-  console.log(`[init] Loaded ${getAllModels().length} model(s), ${Object.keys(config.providers).length} provider(s)`);
+  console.log(`[启动] 已加载 ${getAllModels().length} 个模型, ${Object.keys(config.providers).length} 个提供商`);
 
-  console.log('[init] Starting proxy server...');
+  console.log('[启动] 正在启动代理服务器...');
   const server = startProxy(config.port);
 
-  console.log(`[init] Dashboard:       http://localhost:${server.port}/`);
+  console.log(`[启动] 管理面板:       http://localhost:${server.port}/`);
   console.log(`[init] Chat completions: POST http://localhost:${server.port}/v1/chat/completions`);
   console.log(`[init] Model list:      GET  http://localhost:${server.port}/v1/models`);
   console.log('');
-  console.log('[init] Ready. Press Ctrl+C to stop.');
+  console.log('[启动] 就绪。按 Ctrl+C 退出。');
   await new Promise(() => { });
 }
 
 main().catch((err) => {
-  console.error('[fatal]', err);
+  console.error('[致命错误]', err);
   process.exit(1);
 });

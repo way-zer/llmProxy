@@ -66,7 +66,7 @@ export async function loadConfig(): Promise<AppConfig> {
   if (loaded) {
     config = loaded;
   } else {
-    console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
+    console.log(`[config] ${CONFIG_PATH} 未找到配置文件, 使用默认值`);
     config = { port: 3000, providers: {}, mappings: {} };
     await saveConfig();
   }

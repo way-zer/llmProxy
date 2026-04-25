@@ -37,11 +37,11 @@ function ConfirmDialog({ message, onResolve }: { message: string; onResolve: (ok
   return (
     <div className="confirm-overlay" onClick={e => { if (e.target === e.currentTarget) onResolve(false); }}>
       <div className="confirm-box">
-        <h3>Confirm</h3>
+        <h3>确认</h3>
         <p>{message}</p>
         <div className="modal-footer">
-          <button className="btn" onClick={() => onResolve(false)}>Cancel</button>
-          <button className="btn btn-danger" onClick={() => onResolve(true)}>Confirm</button>
+          <button className="btn" onClick={() => onResolve(false)}>取消</button>
+          <button className="btn btn-danger" onClick={() => onResolve(true)}>确认</button>
         </div>
       </div>
     </div>
@@ -51,9 +51,9 @@ function ConfirmDialog({ message, onResolve }: { message: string; onResolve: (ok
 // ─── Tabs ───────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'providers', label: 'Providers' },
-  { id: 'routes', label: 'Routes' },
+  { id: 'overview', label: '概览' },
+  { id: 'providers', label: '提供商' },
+  { id: 'routes', label: '路由' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -88,7 +88,7 @@ export function App() {
   const handleReload = useCallback(async () => {
     try {
       const r = await api.reload();
-      addToast(`Reloaded: ${r.models} models, ${r.mappings} mappings, ${r.providers} providers`);
+      addToast(`已重新加载: ${r.models} 个模型, ${r.mappings} 个映射, ${r.providers} 个提供商`);
       await refreshHealth();
     } catch (e) {
       addToast(e instanceof Error ? e.message : String(e), 'error');
@@ -114,15 +114,15 @@ export function App() {
             <span style={{ color: 'var(--red)' }}>{error}</span>
           ) : health ? (
             <>
-              <span><span className="status-dot" />running</span>
-              <span>Models: <b>{health.models}</b></span>
-              <span>Mappings: <b>{health.mappings}</b></span>
-              <span>Providers: <b>{health.providers}</b></span>
-              <span>Port: <b>{health.port}</b></span>
-              <button className="btn btn-xs" onClick={handleReload} style={{ marginLeft: 4 }}>Reload</button>
+              <span><span className="status-dot" />运行中</span>
+              <span>模型: <b>{health.models}</b></span>
+              <span>映射: <b>{health.mappings}</b></span>
+              <span>提供商: <b>{health.providers}</b></span>
+              <span>端口: <b>{health.port}</b></span>
+              <button className="btn btn-xs" onClick={handleReload} style={{ marginLeft: 4 }}>重新加载</button>
             </>
           ) : (
-            <span><span className="spinner" style={{ marginRight: 6 }} />Connecting...</span>
+            <span><span className="spinner" style={{ marginRight: 6 }} />连接中...</span>
           )}
         </nav>
       </header>

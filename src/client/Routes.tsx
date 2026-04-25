@@ -15,10 +15,10 @@ const Latency = ({ name }: LatencyProps) => {
     try { setResult(await api.test(name)); }
     catch (e) { setResult({ modelName: name, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) }); }
   };
-  if (result === undefined) return <button className="btn btn-xs" onClick={test}>Test</button>;
-  if (result === null) return <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>;
-  if (result.ok) return <span className="badge badge-ok" title={`${result.preview ?? ''}&#10;Click to re-test`} onClick={test} style={{ cursor: 'pointer' }}>{result.latencyMs}ms</span>;
-  return <span className="badge badge-err" title={result.error ?? 'Unknown error'} onClick={test} style={{ cursor: 'pointer' }}>{result.error ? result.error.slice(0, 40) + (result.error.length > 40 ? '…' : '') : 'fail'}</span>;
+  if (result === undefined) return <button className="btn btn-xs" onClick={test}>测试</button>;
+  if (result === null) return <span style={{ color: 'var(--text2)', fontSize: 14 }}>...</span>;
+  if (result.ok) return <span className="badge badge-ok" title={`${result.preview ?? ''}&#10;点击重新测试`} onClick={test} style={{ cursor: 'pointer' }}>{result.latencyMs}ms</span>;
+  return <span className="badge badge-err" title={result.error ?? '未知错误'} onClick={test} style={{ cursor: 'pointer' }}>{result.error ? result.error.slice(0, 40) + (result.error.length > 40 ? '…' : '') : '失败'}</span>;
 };
 
 
@@ -80,8 +80,8 @@ export function Routes({ onRefresh }: Props) {
   const addRoute = async (name: string, provider: string, modelId: string) => {
     const exists = mappings.some(m => m.name === name);
     try {
-      if (exists) { await api.updateMapping(name, provider, modelId); toast(`"${name}" updated`); }
-      else { await api.addMapping(name, provider, modelId); toast(`"${name}" added to routes`); }
+      if (exists) { await api.updateMapping(name, provider, modelId); toast(`"${name}" 已更新`); }
+      else { await api.addMapping(name, provider, modelId); toast(`"${name}" 已添加到路由`); }
       load();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
@@ -91,25 +91,25 @@ export function Routes({ onRefresh }: Props) {
     if (!name) return;
     try {
       const r = await api.addMapping(name);
-      toast(`"${name}" → ${r.modelId} (${r.provider})${r.fuzzy ? ' [fuzzy]' : ''}`);
+      toast(`"${name}" → ${r.modelId} (${r.provider})${r.fuzzy ? ' [模糊匹配]' : ''}`);
       setNewRouteName('');
       load();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
   const removeMapping = async (name: string) => {
-    if (!confirm(`Remove route "${name}"?`)) return;
-    try { await api.removeMapping(name); toast('Route removed'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+    if (!confirm(`删除路由 "${name}"？`)) return;
+    try { await api.removeMapping(name); toast('路由已删除'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
   const removeModel = async (provider: string, modelId: string) => {
-    if (!confirm(`Remove "${modelId}" from catalog?`)) return;
+    if (!confirm(`从目录中删除 "${modelId}"？`)) return;
     try {
       const result = await api.removeModel(provider, modelId);
       if (result.reassigned.length > 0) {
         const names = result.reassigned.map(r => `"${r.name}" → ${r.to}`).join(', ');
-        toast(`Removed. Reassigned: ${names}`);
+        toast(`已删除。路由重分配: ${names}`);
       } else {
-        toast('Removed from catalog');
+        toast('已从目录删除');
       }
       load();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
@@ -120,10 +120,10 @@ export function Routes({ onRefresh }: Props) {
   const DirectLatency = ({ provider, modelId }: { provider: string; modelId: string }) => {
     const key = `${provider}|${modelId}`;
     const t = directTests[key];
-    if (t === undefined) return <button className="btn btn-xs" onClick={() => testDirect(provider, modelId)}>Test</button>;
-    if (t === null) return <span style={{ color: 'var(--text2)', fontSize: 12 }}>...</span>;
-    if (t.ok) return <span className="badge badge-ok" title={`${t.preview ?? ''}&#10;Click to re-test`} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.latencyMs}ms</span>;
-    return <span className="badge badge-err" title={t.error ?? 'Unknown error'} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.error ? t.error.slice(0, 40) + (t.error.length > 40 ? '…' : '') : 'fail'}</span>;
+    if (t === undefined) return <button className="btn btn-xs" onClick={() => testDirect(provider, modelId)}>测试</button>;
+    if (t === null) return <span style={{ color: 'var(--text2)', fontSize: 14 }}>...</span>;
+    if (t.ok) return <span className="badge badge-ok" title={`${t.preview ?? ''}&#10;点击重新测试`} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.latencyMs}ms</span>;
+    return <span className="badge badge-err" title={t.error ?? '未知错误'} onClick={() => testDirect(provider, modelId)} style={{ cursor: 'pointer' }}>{t.error ? t.error.slice(0, 40) + (t.error.length > 40 ? '…' : '') : '失败'}</span>;
   };
 
   return (
@@ -132,18 +132,18 @@ export function Routes({ onRefresh }: Props) {
 
       {/* ── Model Catalog ── */}
       <div className="card">
-        <div className="card-header"><h2>Model Catalog ({models.length})</h2>
+        <div className="card-header"><h2>模型目录 ({models.length})</h2>
           {models.length > 0 && (
             testingAll
-              ? <span style={{ fontSize: 12, color: 'var(--text2)' }}>Testing {testingAll.done}/{testingAll.total}...</span>
-              : <button className="btn btn-xs" onClick={testAllModels}>Test All</button>
+              ? <span style={{ fontSize: 14, color: 'var(--text2)' }}>测试中 {testingAll.done}/{testingAll.total}...</span>
+              : <button className="btn btn-xs" onClick={testAllModels}>全部测试</button>
           )}
         </div>
         {models.length === 0 ? (
-          <div className="empty"><p>No models in catalog. Star (★) models from the Providers tab.</p></div>
+          <div className="empty"><p>目录中暂无模型。请在「提供商」标签页中点击 ★ 导入。</p></div>
         ) : (
           <table>
-            <thead><tr><th>Name</th><th>Provider</th><th>Latency</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>提供商</th><th>延迟</th><th /></tr></thead>
             <tbody>
               {models.map(m => {
                 const routed = routedSet.has(modelKey(m));
@@ -153,9 +153,9 @@ export function Routes({ onRefresh }: Props) {
                     <td><span className="badge badge-provider">{m.provider}</span></td>
                     <td><DirectLatency provider={m.provider} modelId={m.modelId} /></td>
                     <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                      {!routed && <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>Add Route</button>}
-                      {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>routed</span>}
-                      <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.provider, m.modelId)}>Remove</button>
+                      {!routed && <button className="btn btn-xs" onClick={() => addRoute(m.modelId, m.provider, m.modelId)}>添加路由</button>}
+                      {routed && <span className="badge badge-ok" style={{ marginRight: 6 }}>已路由</span>}
+                      <button className="btn btn-danger btn-xs" onClick={() => removeModel(m.provider, m.modelId)}>删除</button>
                     </td>
                   </tr>
                 );
@@ -168,26 +168,26 @@ export function Routes({ onRefresh }: Props) {
       {/* ── Routes ── */}
       <div className="card">
         <div className="card-header">
-          <h2>Routes ({mappings.length})</h2>
+          <h2>路由 ({mappings.length})</h2>
           {models.length > 0 && (
             <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
               <input
                 className="input-xs"
-                placeholder="route name"
+                placeholder="路由名称"
                 value={newRouteName}
                 onChange={e => setNewRouteName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleAddRoute(); }}
                 style={{ width: 140 }}
               />
-              <button className="btn btn-xs" disabled={!newRouteName.trim()} onClick={handleAddRoute}>Add</button>
+              <button className="btn btn-xs" disabled={!newRouteName.trim()} onClick={handleAddRoute}>添加</button>
             </span>
           )}
         </div>
         {mappings.length === 0 ? (
-          <div className="empty"><p>No routes yet. Add routes from the model catalog above.</p></div>
+          <div className="empty"><p>暂无路由。在上方模型目录中点击「添加路由」或输入名称添加。</p></div>
         ) : (
           <table>
-            <thead><tr><th>Name</th><th>Model</th><th>Latency</th><th /></tr></thead>
+            <thead><tr><th>名称</th><th>模型</th><th>延迟</th><th /></tr></thead>
             <tbody>
               {mappings.map(m => (
                 <tr key={m.name}>
@@ -205,7 +205,7 @@ export function Routes({ onRefresh }: Props) {
                   </td>
                   <td><Latency name={m.name} /></td>
                   <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>Remove</button>
+                    <button className="btn btn-danger btn-xs" onClick={() => removeMapping(m.name)}>删除</button>
                   </td>
                 </tr>
               ))}
@@ -219,6 +219,6 @@ export function Routes({ onRefresh }: Props) {
 
 const selectStyle: React.CSSProperties = {
   padding: '3px 6px', borderRadius: 4, border: '1px solid var(--border)',
-  background: 'var(--surface2)', color: 'var(--text)', fontSize: 12,
+  background: 'var(--surface2)', color: 'var(--text)', fontSize: 14,
   fontFamily: 'inherit', width: 140,
 };

@@ -35,11 +35,11 @@ export async function handleListProviders(): Promise<Response> {
 export async function handleAddProvider(request: Request): Promise<Response> {
   const body = await parseBody<{ name: string; baseUrl: string; apiKey?: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.name || !body.baseUrl) return err('name and baseUrl are required');
+  if (!body.name || !body.baseUrl) return err('名称和 baseUrl 为必填项');
   addProvider(body.name, body.baseUrl, body.apiKey ?? '');
   await saveConfig();
   scanProvider(body.name).then(r =>
-    console.log(`[admin] Auto-scan '${body.name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)
+    console.log(`[admin] 自动扫描 '${body.name}': ${r.error ? '失败' : `发现 ${r.models.length} 个模型`}`)
   ).catch(() => {});
   return json({ success: true, name: body.name });
 }
@@ -47,18 +47,18 @@ export async function handleAddProvider(request: Request): Promise<Response> {
 export async function handleUpdateProvider(name: string, request: Request): Promise<Response> {
   const body = await parseBody<{ baseUrl: string; apiKey?: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.baseUrl) return err('baseUrl is required');
-  if (!updateProvider(name, body.baseUrl, body.apiKey ?? '')) return err(`Provider '${name}' not found`, 404);
+  if (!body.baseUrl) return err('baseUrl 为必填项');
+  if (!updateProvider(name, body.baseUrl, body.apiKey ?? '')) return err(`提供商 '${name}' 未找到`, 404);
   await saveConfig();
   await clearScan(name);
   scanProvider(name).then(r =>
-    console.log(`[admin] Re-scan '${name}': ${r.error ? 'failed' : `found ${r.models.length} models`}`)
+    console.log(`[admin] 重新扫描 '${name}': ${r.error ? '失败' : `发现 ${r.models.length} 个模型`}`)
   ).catch(() => {});
   return json({ success: true, name });
 }
 
 export async function handleRemoveProvider(name: string): Promise<Response> {
-  if (!removeProvider(name)) return err(`Provider '${name}' not found`, 404);
+  if (!removeProvider(name)) return err(`提供商 '${name}' 未找到`, 404);
   await clearScan(name);
   await saveConfig();
   return json({ success: true, name });
@@ -84,7 +84,7 @@ export async function handleImportAll(providerName: string): Promise<Response> {
     if (scan.error) return err(scan.error);
   }
   const cfg = getConfig();
-  if (!cfg.providers[providerName]) return err(`Provider '${providerName}' not found`);
+  if (!cfg.providers[providerName]) return err(`提供商 '${providerName}' 未找到`);
   let added = 0, skipped = 0, mapped = 0;
   for (const m of scan.models) {
     if (m.id in (cfg.providers[providerName]?.models ?? {})) { skipped++; continue; }
@@ -99,8 +99,8 @@ export async function handleImportAll(providerName: string): Promise<Response> {
 export async function handleImportOne(providerName: string, request: Request): Promise<Response> {
   const body = await parseBody<{ modelId: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.modelId) return err('modelId is required');
-  if (!getConfig().providers[providerName]) return err(`Provider '${providerName}' not found`);
+  if (!body.modelId) return err('modelId 为必填项');
+  if (!getConfig().providers[providerName]) return err(`提供商 '${providerName}' 未找到`);
   addModelDef(providerName, body.modelId);
   const mapped = !getConfig().mappings[body.modelId];
   if (mapped) addMapping(body.modelId, providerName, body.modelId);
@@ -117,8 +117,8 @@ export function handleListModelDefs(): Response {
 export async function handleAddModelDef(request: Request): Promise<Response> {
   const body = await parseBody<{ provider: string; modelId: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.provider || !body.modelId) return err('provider and modelId are required');
-  if (!getConfig().providers[body.provider]) return err(`Provider '${body.provider}' not found`);
+  if (!body.provider || !body.modelId) return err('provider 和 modelId 为必填项');
+  if (!getConfig().providers[body.provider]) return err(`提供商 '${body.provider}' 未找到`);
   addModelDef(body.provider, body.modelId);
   await saveConfig();
   return json({ success: true });
@@ -128,9 +128,9 @@ export async function handleRemoveModelDef(request: Request): Promise<Response> 
   const url = new URL(request.url);
   const provider = url.searchParams.get('provider');
   const modelId = url.searchParams.get('modelId');
-  if (!provider || !modelId) return err('provider and modelId query params required');
+  if (!provider || !modelId) return err('provider 和 modelId 查询参数为必填项');
   const result = removeModelDef(provider, modelId);
-  if (!result) return err('Model not found', 404);
+  if (!result) return err('模型未找到', 404);
   await saveConfig();
   return json({ success: true, reassigned: result.reassigned });
 
@@ -145,7 +145,7 @@ export function handleListMappings(): Response {
 export async function handleAddMapping(request: Request): Promise<Response> {
   const body = await parseBody<{ name: string; provider?: string; modelId?: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.name) return err('name is required');
+  if (!body.name) return err('名称为必填项');
 
   let provider = body.provider ?? '';
   let modelId = body.modelId ?? '';
@@ -155,13 +155,13 @@ export async function handleAddMapping(request: Request): Promise<Response> {
   const modelExists = provider && modelId && modelId in (getConfig().providers[provider]?.models ?? {});
   if (!modelExists) {
     const match = findClosestModel(body.name);
-    if (!match) return err('No models in catalog to match against');
+    if (!match) return err('目录中没有模型可供匹配');
     provider = match.provider;
     modelId = match.modelId;
     fuzzy = !(body.provider && body.modelId && body.provider === provider && body.modelId === modelId);
   }
 
-  if (!addMapping(body.name, provider, modelId)) return err(`Provider '${provider}' not found`);
+  if (!addMapping(body.name, provider, modelId)) return err(`提供商 '${provider}' 未找到`);
   await saveConfig();
   return json({ success: true, name: body.name, provider, modelId, fuzzy });
 }
@@ -169,16 +169,16 @@ export async function handleAddMapping(request: Request): Promise<Response> {
 export async function handleUpdateMapping(name: string, request: Request): Promise<Response> {
   const body = await parseBody<{ provider: string; modelId: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.provider || !body.modelId) return err('provider and modelId are required');
+  if (!body.provider || !body.modelId) return err('provider 和 modelId 为必填项');
   if (!updateMapping(name, body.provider, body.modelId)) {
-    return err(`Mapping '${name}' not found or provider '${body.provider}' invalid`, 404);
+    return err(`映射 '${name}' 未找到或提供商 '${body.provider}' 无效`, 404);
   }
   await saveConfig();
   return json({ success: true, name });
 }
 
 export async function handleRemoveMapping(name: string): Promise<Response> {
-  if (!removeMapping(name)) return err(`Mapping '${name}' not found`, 404);
+  if (!removeMapping(name)) return err(`映射 '${name}' 未找到`, 404);
   await saveConfig();
   return json({ success: true, name });
 }
@@ -221,16 +221,16 @@ async function doTest(provider: ProviderConfig, upstreamModelId: string, label: 
 
 export async function handleTestModel(name: string): Promise<Response> {
   const upstream = lookupModel(name);
-  if (!upstream) return err(`Model '${name}' not found`, 404);
+  if (!upstream) return err(`模型 '${name}' 未找到`, 404);
   return doTest(upstream.provider, upstream.upstreamModelId, name);
 }
 
 export async function handleTestDirect(request: Request): Promise<Response> {
   const body = await parseBody<{ provider: string; modelId: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.provider || !body.modelId) return err('provider and modelId required');
+  if (!body.provider || !body.modelId) return err('provider 和 modelId 为必填项');
   const p = getConfig().providers[body.provider];
-  if (!p) return err(`Provider '${body.provider}' not found`, 404);
+  if (!p) return err(`提供商 '${body.provider}' 未找到`, 404);
   return doTest(p, body.modelId, body.modelId);
 }
 

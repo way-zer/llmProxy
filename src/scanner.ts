@@ -32,7 +32,7 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
   const provider = cfg.providers[providerName];
 
   if (!provider) {
-    const r = result(providerName, '', [], `Provider '${providerName}' not found`);
+    const r = result(providerName, '', [], `提供商 '${providerName}' 未找到`);
     await saveScan(providerName, [], r.error);
     return r;
   }
@@ -44,7 +44,7 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
       headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
     });
     if (!res.ok) {
-      const t = await res.text().catch(() => 'unknown error');
+      const t = await res.text().catch(() => '未知错误');
       const err = `HTTP ${res.status}: ${t.slice(0, 300)}`;
       await saveScan(providerName, [], err);
       return result(providerName, provider.baseUrl, [], err);
@@ -58,7 +58,7 @@ export async function scanProvider(providerName: string): Promise<ScanResult> {
     await saveScan(providerName, models);
     return result(providerName, provider.baseUrl, models);
   } catch (err) {
-    const msg = `Connection failed: ${err instanceof Error ? err.message : String(err)}`;
+    const msg = `连接失败: ${err instanceof Error ? err.message : String(err)}`;
     await saveScan(providerName, [], msg);
     return result(providerName, provider.baseUrl, [], msg);
   }

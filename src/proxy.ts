@@ -71,11 +71,11 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
     },
     async fetch(req): Promise<Response> {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
-      return new Response('Not Found', { status: 404, headers: CORS });
+      return new Response('未找到', { status: 404, headers: CORS });
     },
     error(err) {
       console.error('[proxy]', err);
-      return json({ error: 'Internal server error' }, 500);
+      return json({ error: '服务器内部错误' }, 500);
     },
   });
   console.log(`[proxy] http://localhost:${server.port}`);
@@ -112,15 +112,16 @@ function clientModels(): Response {
 
 async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
-  if (!body.model || typeof body.model !== 'string') return json({ error: "Missing 'model' field" }, 400);
+  try { body = await req.json(); } catch { return json({ error: '无效的 JSON 请求体' }, 400); }
+  if (!body.model || typeof body.model !== 'string') return json({ error: "缺少 'model' 字段" }, 400);
 
   const upstream = lookupModel(body.model);
   if (!upstream) {
     const names = listModelNames();
     return json({
       error: {
-        message: `Model '${body.model}' not found. Available: ${names.join(', ') || 'none'}`,
+        message: `模型 '${body.model}' 未找到。可用: ${names.join(', ') || '无'}`,
+      },
         type: 'model_not_found',
       },
     }, 404);
@@ -145,7 +146,7 @@ async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
     }
     if (body.stream) {
       const r = res.body?.getReader();
-      if (!r) return json({ error: 'Empty upstream body' }, 502);
+      if (!r) return json({ error: '上游响应为空' }, 502);
       return new Response(new ReadableStream({
         async start(c) {
           try {
@@ -175,6 +176,6 @@ async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[proxy] fetch: ${msg}`);
-    return json({ error: `Upstream connection failed: ${msg}` }, 502);
+    return json({ error: `上游连接失败: ${msg}` }, 502);
   }
 }

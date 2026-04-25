@@ -167,7 +167,7 @@ export function Providers({ onRefresh }: Props) {
               {isExp && (
                 <div className="provider-card-body">
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12 }}>
-                    <span style={{ fontSize: 13, color: 'var(--text2)', flex: 1 }}>
+                    <span style={{ fontSize: 14, color: 'var(--text2)', flex: 1 }}>
                       Scanned from <code className="mono">{p.baseUrl}/models</code>
                     </span>
                     <button className="btn btn-sm" onClick={() => rescan(p.name)}>Re-scan</button>
