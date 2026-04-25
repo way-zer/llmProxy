@@ -1,9 +1,14 @@
+export interface ModelMeta {
+  // extensible — add properties here in the future
+}
+
 export interface ProviderConfig {
   baseUrl: string;
   apiKey: string;
+  models: Record<string, ModelMeta>;
 }
 
-/** A provider + upstream model pair. Used for both model catalog and routing mappings. */
+/** A provider + upstream model pair. Used for routing mappings and API responses. */
 export interface ModelDef {
   provider: string;
   modelId: string;
@@ -13,7 +18,6 @@ export interface ModelDef {
 export interface AppConfig {
   port: number;
   providers: Record<string, ProviderConfig>;
-  models: ModelDef[];
   mappings: Record<string, ModelDef>;
 }
 

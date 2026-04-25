@@ -1,12 +1,27 @@
 import type { AppConfig, ProviderConfig } from './types';
 import { join } from 'node:path';
 
+function lev(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  const dp = new Uint16Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prev = dp[0]!;
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = dp[j]!;
+      dp[j] = a[i - 1] === b[j - 1] ? prev : 1 + Math.min(prev, dp[j]!, dp[j - 1]!);
+      prev = temp;
+    }
+  }
+  return dp[n]!;
+}
+
 const CONFIG_PATH = join(import.meta.dir, '..', 'config.json');
 
 let config: AppConfig = {
   port: 3000,
   providers: {},
-  models: [],
   mappings: {},
 };
 
@@ -14,17 +29,35 @@ export function getConfig(): Readonly<AppConfig> {
   return config;
 }
 
+/** Collect all ModelDef entries from every provider's models dict. */
+export function getAllModels(): Array<{ provider: string; modelId: string }> {
+  const result: Array<{ provider: string; modelId: string }> = [];
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    for (const modelId of Object.keys(provider.models)) {
+      result.push({ provider: providerName, modelId });
+    }
+  }
+  return result;
+}
+
 // ─── Persistence ────────────────────────────────────────────
 
 async function readConfigFile(): Promise<AppConfig | null> {
   const file = Bun.file(CONFIG_PATH);
   if (!(await file.exists())) return null;
-  const raw: Partial<AppConfig> = JSON.parse(await file.text());
+  const raw = JSON.parse(await file.text()) as Record<string, unknown>;
+
+  const providers = (raw.providers ?? {}) as Record<string, ProviderConfig>;
+
+  // Ensure every provider has a models field (safety net)
+  for (const p of Object.values(providers)) {
+    if (!p.models) p.models = {};
+  }
+
   return {
-    port: raw.port ?? 3000,
-    providers: raw.providers ?? {},
-    models: Array.isArray(raw.models) ? raw.models : [],
-    mappings: raw.mappings ?? {},
+    port: (raw.port as number) ?? 3000,
+    providers,
+    mappings: (raw.mappings ?? {}) as AppConfig['mappings'],
   };
 }
 
@@ -34,7 +67,7 @@ export async function loadConfig(): Promise<AppConfig> {
     config = loaded;
   } else {
     console.log(`[config] No config.json at ${CONFIG_PATH}, using defaults`);
-    config = { port: 3000, providers: {}, models: [], mappings: {} };
+    config = { port: 3000, providers: {}, mappings: {} };
     await saveConfig();
   }
   return config;
@@ -53,7 +86,7 @@ export async function reloadConfigAsync(): Promise<AppConfig> {
 // ─── Providers ──────────────────────────────────────────────
 
 export function addProvider(name: string, baseUrl: string, apiKey: string): void {
-  config.providers[name] = { baseUrl, apiKey };
+  config.providers[name] = { baseUrl, apiKey, models: {} };
 }
 
 export function updateProvider(name: string, baseUrl: string, apiKey: string): boolean {
@@ -64,7 +97,7 @@ export function updateProvider(name: string, baseUrl: string, apiKey: string): b
 
 export function removeProvider(name: string): boolean {
   if (!config.providers[name]) return false;
-  config.models = config.models.filter(m => m.provider !== name);
+  // Remove mappings that reference this provider
   for (const [kn, m] of Object.entries(config.mappings)) {
     if (m.provider === name) delete config.mappings[kn];
   }
@@ -75,15 +108,41 @@ export function removeProvider(name: string): boolean {
 // ─── Model definitions ──────────────────────────────────────
 
 export function addModelDef(provider: string, modelId: string): void {
-  if (!config.models.some(m => m.provider === provider && m.modelId === modelId)) {
-    config.models.push({ provider, modelId });
-  }
+  const p = config.providers[provider];
+  if (!p) return;
+  p.models[modelId] = {};
 }
 
-export function removeModelDef(provider: string, modelId: string): boolean {
-  const len = config.models.length;
-  config.models = config.models.filter(m => !(m.provider === provider && m.modelId === modelId));
-  return config.models.length < len;
+export function removeModelDef(provider: string, modelId: string): { reassigned: Array<{ name: string; from: string; to: string }> } | null {
+  const p = config.providers[provider];
+  if (!p || !(modelId in p.models)) return null;
+  delete p.models[modelId];
+
+  const reassigned: Array<{ name: string; from: string; to: string }> = [];
+
+  // Reassign mappings that pointed to the removed model
+  for (const [name, m] of Object.entries(config.mappings)) {
+    if (m.provider !== provider || m.modelId !== modelId) continue;
+    let best: { provider: string; modelId: string } | null = null;
+    let bestDist = Infinity;
+    for (const [pname, prov] of Object.entries(config.providers)) {
+      for (const mid of Object.keys(prov.models)) {
+        const d = lev(modelId, mid);
+        if (d < bestDist || (d === bestDist && pname === provider)) {
+          best = { provider: pname, modelId: mid };
+          bestDist = d;
+        }
+      }
+    }
+    if (best) {
+      const from = m.modelId;
+      m.provider = best.provider;
+      m.modelId = best.modelId;
+      reassigned.push({ name, from, to: best.modelId });
+    }
+  }
+
+  return { reassigned };
 }
 
 // ─── Mappings ───────────────────────────────────────────────
@@ -92,6 +151,22 @@ export function addMapping(name: string, provider: string, modelId: string): boo
   if (!config.providers[provider]) return false;
   config.mappings[name] = { provider, modelId };
   return true;
+}
+
+/** Find the model closest to the given query string across all providers. */
+export function findClosestModel(query: string): { provider: string; modelId: string } | null {
+  let best: { provider: string; modelId: string } | null = null;
+  let bestDist = Infinity;
+  for (const [pname, prov] of Object.entries(config.providers)) {
+    for (const mid of Object.keys(prov.models)) {
+      const d = lev(query, mid);
+      if (d < bestDist) {
+        best = { provider: pname, modelId: mid };
+        bestDist = d;
+      }
+    }
+  }
+  return best;
 }
 
 export function updateMapping(name: string, provider: string, modelId: string): boolean {
@@ -116,17 +191,21 @@ export function lookupModel(clientName: string): { provider: ProviderConfig; ups
     const provider = config.providers[mapping.provider];
     if (provider) return { provider, upstreamModelId: mapping.modelId };
   }
-  // fallback: model catalog
-  const def = config.models.find(m => m.modelId === clientName);
-  if (def) {
-    const provider = config.providers[def.provider];
-    if (provider) return { provider, upstreamModelId: def.modelId };
+  // fallback: search all provider models
+  for (const [providerName, provider] of Object.entries(config.providers)) {
+    if (clientName in provider.models) {
+      return { provider, upstreamModelId: clientName };
+    }
   }
   return null;
 }
 
 export function listModelNames(): string[] {
   const names = new Set(Object.keys(config.mappings));
-  for (const m of config.models) names.add(m.modelId);
+  for (const [, provider] of Object.entries(config.providers)) {
+    for (const modelId of Object.keys(provider.models)) {
+      names.add(modelId);
+    }
+  }
   return [...names];
 }

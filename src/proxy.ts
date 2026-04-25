@@ -87,7 +87,7 @@ function health(): Response {
   const c = getConfig();
   return json({
     status: 'ok',
-    models: c.models.length,
+    models: Object.values(c.providers).reduce((sum, p) => sum + Object.keys(p.models).length, 0),
     mappings: Object.keys(c.mappings).length,
     providers: Object.keys(c.providers).length,
     port: c.port,
@@ -102,8 +102,10 @@ function clientModels(): Response {
     data.push({ id: name, object: 'model', created: 0, owned_by: m.provider });
     seen.add(name);
   }
-  for (const m of c.models) {
-    if (!seen.has(m.modelId)) data.push({ id: m.modelId, object: 'model', created: 0, owned_by: m.provider });
+  for (const [providerName, provider] of Object.entries(c.providers)) {
+    for (const modelId of Object.keys(provider.models)) {
+      if (!seen.has(modelId)) data.push({ id: modelId, object: 'model', created: 0, owned_by: providerName });
+    }
   }
   return json({ object: 'list', data });
 }

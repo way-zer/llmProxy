@@ -1,10 +1,11 @@
 import {
-  getConfig, saveConfig,
+  getConfig, saveConfig, getAllModels,
   addModelDef, removeModelDef,
   addMapping, updateMapping, removeMapping,
   addProvider, updateProvider, removeProvider,
   reloadConfigAsync,
   lookupModel,
+  findClosestModel,
 } from './config';
 import type { ProviderConfig } from './types';
 import { clearScan } from './scanstore';
@@ -21,7 +22,7 @@ export async function handleListProviders(): Promise<Response> {
       name, baseUrl: p.baseUrl,
       apiKey: p.apiKey ? p.apiKey.slice(0, 6) + '...' + p.apiKey.slice(-4) : '',
       hasFullKey: !!p.apiKey,
-      modelCount: cfg.models.filter(m => m.provider === name).length,
+      modelCount: Object.keys(p.models).length,
       scanStatus: scan ? (scan.error ? 'error' : 'ok') : 'pending',
       scanError: scan?.error ?? null,
       scanModelCount: scan?.models?.length ?? 0,
@@ -86,7 +87,7 @@ export async function handleImportAll(providerName: string): Promise<Response> {
   if (!cfg.providers[providerName]) return err(`Provider '${providerName}' not found`);
   let added = 0, skipped = 0, mapped = 0;
   for (const m of scan.models) {
-    if (cfg.models.some(x => x.provider === providerName && x.modelId === m.id)) { skipped++; continue; }
+    if (m.id in (cfg.providers[providerName]?.models ?? {})) { skipped++; continue; }
     addModelDef(providerName, m.id);
     added++;
     if (!cfg.mappings[m.id]) { addMapping(m.id, providerName, m.id); mapped++; }
@@ -110,7 +111,7 @@ export async function handleImportOne(providerName: string, request: Request): P
 // ─── Model definitions ──────────────────────────────────────
 
 export function handleListModelDefs(): Response {
-  return json(getConfig().models);
+  return json(getAllModels());
 }
 
 export async function handleAddModelDef(request: Request): Promise<Response> {
@@ -128,10 +129,10 @@ export async function handleRemoveModelDef(request: Request): Promise<Response> 
   const provider = url.searchParams.get('provider');
   const modelId = url.searchParams.get('modelId');
   if (!provider || !modelId) return err('provider and modelId query params required');
-  if (!removeModelDef(provider, modelId)) return err('Model not found', 404);
+  const result = removeModelDef(provider, modelId);
+  if (!result) return err('Model not found', 404);
   await saveConfig();
-  return json({ success: true });
-}
+  return json({ success: true, reassigned: result.reassigned });
 
 // ─── Mappings ───────────────────────────────────────────────
 
@@ -142,12 +143,27 @@ export function handleListMappings(): Response {
 }
 
 export async function handleAddMapping(request: Request): Promise<Response> {
-  const body = await parseBody<{ name: string; provider: string; modelId: string }>(request);
+  const body = await parseBody<{ name: string; provider?: string; modelId?: string }>(request);
   if (body instanceof Response) return body;
-  if (!body.name || !body.provider || !body.modelId) return err('name, provider, and modelId are required');
-  if (!addMapping(body.name, body.provider, body.modelId)) return err(`Provider '${body.provider}' not found`);
+  if (!body.name) return err('name is required');
+
+  let provider = body.provider ?? '';
+  let modelId = body.modelId ?? '';
+  let fuzzy = false;
+
+  // If no provider/model specified, or model doesn't exist → fuzzy match
+  const modelExists = provider && modelId && modelId in (getConfig().providers[provider]?.models ?? {});
+  if (!modelExists) {
+    const match = findClosestModel(body.name);
+    if (!match) return err('No models in catalog to match against');
+    provider = match.provider;
+    modelId = match.modelId;
+    fuzzy = !(body.provider && body.modelId && body.provider === provider && body.modelId === modelId);
+  }
+
+  if (!addMapping(body.name, provider, modelId)) return err(`Provider '${provider}' not found`);
   await saveConfig();
-  return json({ success: true, name: body.name });
+  return json({ success: true, name: body.name, provider, modelId, fuzzy });
 }
 
 export async function handleUpdateMapping(name: string, request: Request): Promise<Response> {
@@ -224,7 +240,7 @@ export async function handleReload(): Promise<Response> {
   const cfg = await reloadConfigAsync();
   return json({
     success: true,
-    models: cfg.models.length,
+    models: getAllModels().length,
     mappings: Object.keys(cfg.mappings).length,
     providers: Object.keys(cfg.providers).length,
   });
