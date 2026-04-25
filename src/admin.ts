@@ -133,7 +133,7 @@ export async function handleRemoveModelDef(request: Request): Promise<Response> 
   if (!result) return err('模型未找到', 404);
   await saveConfig();
   return json({ success: true, reassigned: result.reassigned });
-
+}
 // ─── Mappings ───────────────────────────────────────────────
 
 export function handleListMappings(): Response {
