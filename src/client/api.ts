@@ -81,12 +81,12 @@ export const api = {
 
   // Models
   listModels: () => req<ModelDef[]>('GET', '/api/models'),
-  removeModel: (provider: string, modelId: string) => req<{ success: boolean }>('DELETE', `/api/models?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`),
+  removeModel: (provider: string, modelId: string) => req<{ success: boolean; reassigned: Array<{ name: string; from: string; to: string }> }>('DELETE', `/api/models?provider=${encodeURIComponent(provider)}&modelId=${encodeURIComponent(modelId)}`),
 
   // Mappings
   listMappings: () => req<MappingDef[]>('GET', '/api/mappings'),
-  addMapping: (name: string, provider: string, modelId: string) =>
-    req<{ success: boolean }>('POST', '/api/mappings', { name, provider, modelId }),
+  addMapping: (name: string, provider?: string, modelId?: string) =>
+    req<{ success: boolean; name: string; provider: string; modelId: string; fuzzy: boolean }>('POST', '/api/mappings', { name, provider, modelId }),
   updateMapping: (name: string, provider: string, modelId: string) =>
     req<{ success: boolean }>('PUT', `/api/mappings/${encodeURIComponent(name)}`, { provider, modelId }),
   removeMapping: (name: string) =>
@@ -95,4 +95,7 @@ export const api = {
   // Test
   test: (name: string) => req<TestResult>('POST', `/api/test/${encodeURIComponent(name)}`),
   testDirect: (provider: string, modelId: string) => req<TestResult>('POST', '/api/test-direct', { provider, modelId }),
+
+  // Config
+  reload: () => req<{ success: boolean; models: number; mappings: number; providers: number }>('POST', '/api/reload'),
 };

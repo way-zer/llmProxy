@@ -6,6 +6,7 @@ interface Props { onRefresh: () => void; }
 
 const modelKey = (m: ModelDef) => `${m.provider}|${m.modelId}`;
 
+
 interface LatencyProps { name: string }
 const Latency = ({ name }: LatencyProps) => {
   const [result, setResult] = useState<TestResult | null | undefined>(undefined);
@@ -26,8 +27,9 @@ export function Routes({ onRefresh }: Props) {
   const [models, setModels] = useState<ModelDef[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [directTests, setDirectTests] = useState<Record<string, TestResult | null>>({});
+  const [testingAll, setTestingAll] = useState<{ total: number; done: number } | null>(null);
+  const [newRouteName, setNewRouteName] = useState('');
   const [msg, setMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-
   const toast = useCallback((text: string, type: 'success' | 'error' = 'success') => {
     setMsg({ text, type }); setTimeout(() => setMsg(null), 3000);
   }, []);
@@ -35,7 +37,7 @@ export function Routes({ onRefresh }: Props) {
   const load = useCallback(async () => {
     try {
       const [m, p, c] = await Promise.all([api.listMappings(), api.listProviders(), api.listModels()]);
-      setMappings(m); setProviders(p); setModels(c); onRefresh();
+      setMappings(m); setProviders(p); setModels(c.toSorted((a, b) => a.provider.localeCompare(b.provider) || a.modelId.localeCompare(b.modelId))); onRefresh();
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   }, [onRefresh, toast]);
 
@@ -51,6 +53,25 @@ export function Routes({ onRefresh }: Props) {
     catch (e) { setDirectTests(prev => ({ ...prev, [key]: { modelName: modelId, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } })); }
   };
 
+  const testAllModels = useCallback(async () => {
+    setTestingAll({ total: models.length, done: 0 });
+    let done = 0;
+    const promises = models.map(async (m) => {
+      const key = modelKey(m);
+      setDirectTests(prev => ({ ...prev, [key]: null }));
+      try {
+        const result = await api.testDirect(m.provider, m.modelId);
+        setDirectTests(prev => ({ ...prev, [key]: result }));
+      } catch (e) {
+        setDirectTests(prev => ({ ...prev, [key]: { modelName: m.modelId, latencyMs: 0, ok: false, error: e instanceof Error ? e.message : String(e) } }));
+      }
+      done++;
+      setTestingAll(prev => prev ? { ...prev, done } : null);
+    });
+    await Promise.all(promises);
+    setTestingAll(null);
+  }, [models]);
+
   const updateMapping = async (name: string, provider: string, modelId: string) => {
     try { await api.updateMapping(name, provider, modelId); setMappings(prev => prev.map(m => m.name === name ? { ...m, provider, modelId } : m)); }
     catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); load(); }
@@ -65,6 +86,16 @@ export function Routes({ onRefresh }: Props) {
     } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
+  const handleAddRoute = async () => {
+    const name = newRouteName.trim();
+    if (!name) return;
+    try {
+      const r = await api.addMapping(name);
+      toast(`"${name}" → ${r.modelId} (${r.provider})${r.fuzzy ? ' [fuzzy]' : ''}`);
+      setNewRouteName('');
+      load();
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+  };
   const removeMapping = async (name: string) => {
     if (!confirm(`Remove route "${name}"?`)) return;
     try { await api.removeMapping(name); toast('Route removed'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
@@ -72,7 +103,16 @@ export function Routes({ onRefresh }: Props) {
 
   const removeModel = async (provider: string, modelId: string) => {
     if (!confirm(`Remove "${modelId}" from catalog?`)) return;
-    try { await api.removeModel(provider, modelId); toast('Removed from catalog'); load(); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
+    try {
+      const result = await api.removeModel(provider, modelId);
+      if (result.reassigned.length > 0) {
+        const names = result.reassigned.map(r => `"${r.name}" → ${r.to}`).join(', ');
+        toast(`Removed. Reassigned: ${names}`);
+      } else {
+        toast('Removed from catalog');
+      }
+      load();
+    } catch (e) { toast(e instanceof Error ? e.message : String(e), 'error'); }
   };
 
   const routedSet = new Set(mappings.map(m => `${m.provider}|${m.modelId}`));
@@ -92,7 +132,13 @@ export function Routes({ onRefresh }: Props) {
 
       {/* ── Model Catalog ── */}
       <div className="card">
-        <div className="card-header"><h2>Model Catalog ({models.length})</h2></div>
+        <div className="card-header"><h2>Model Catalog ({models.length})</h2>
+          {models.length > 0 && (
+            testingAll
+              ? <span style={{ fontSize: 12, color: 'var(--text2)' }}>Testing {testingAll.done}/{testingAll.total}...</span>
+              : <button className="btn btn-xs" onClick={testAllModels}>Test All</button>
+          )}
+        </div>
         {models.length === 0 ? (
           <div className="empty"><p>No models in catalog. Star (★) models from the Providers tab.</p></div>
         ) : (
@@ -121,7 +167,22 @@ export function Routes({ onRefresh }: Props) {
 
       {/* ── Routes ── */}
       <div className="card">
-        <div className="card-header"><h2>Routes ({mappings.length})</h2></div>
+        <div className="card-header">
+          <h2>Routes ({mappings.length})</h2>
+          {models.length > 0 && (
+            <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input
+                className="input-xs"
+                placeholder="route name"
+                value={newRouteName}
+                onChange={e => setNewRouteName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddRoute(); }}
+                style={{ width: 140 }}
+              />
+              <button className="btn btn-xs" disabled={!newRouteName.trim()} onClick={handleAddRoute}>Add</button>
+            </span>
+          )}
+        </div>
         {mappings.length === 0 ? (
           <div className="empty"><p>No routes yet. Add routes from the model catalog above.</p></div>
         ) : (

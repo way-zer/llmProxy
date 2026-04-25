@@ -186,3 +186,12 @@ tr:last-child td { border-bottom: none; }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--surface); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Inline inputs */
+input.input-xs, select.input-xs {
+  padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border);
+  background: var(--surface2); color: var(--text); font-size: 12px;
+  font-family: inherit; outline: none; transition: border-color .15s;
+}
+input.input-xs:focus, select.input-xs:focus { border-color: var(--accent); }
+input.input-xs::placeholder { color: var(--text2); }

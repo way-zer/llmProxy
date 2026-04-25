@@ -85,6 +85,16 @@ export function App() {
     }
   }, []);
 
+  const handleReload = useCallback(async () => {
+    try {
+      const r = await api.reload();
+      addToast(`Reloaded: ${r.models} models, ${r.mappings} mappings, ${r.providers} providers`);
+      await refreshHealth();
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  }, [addToast, refreshHealth]);
+
   useEffect(() => { refreshHealth(); }, [refreshHealth]);
 
   return (
@@ -109,6 +119,7 @@ export function App() {
               <span>Mappings: <b>{health.mappings}</b></span>
               <span>Providers: <b>{health.providers}</b></span>
               <span>Port: <b>{health.port}</b></span>
+              <button className="btn btn-xs" onClick={handleReload} style={{ marginLeft: 4 }}>Reload</button>
             </>
           ) : (
             <span><span className="spinner" style={{ marginRight: 6 }} />Connecting...</span>
