@@ -17,6 +17,7 @@ export interface ModelDef {
 
 export interface AppConfig {
   port: number;
+  recorder?: { enabled?: boolean };
   providers: Record<string, ProviderConfig>;
   mappings: Record<string, ModelDef>;
 }

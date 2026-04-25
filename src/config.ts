@@ -1,5 +1,6 @@
 import type { AppConfig, ProviderConfig } from './types';
 import { join } from 'node:path';
+import { mkdirSync, existsSync, renameSync } from 'node:fs';
 
 function lev(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -17,10 +18,37 @@ function lev(a: string, b: string): number {
   return dp[n]!;
 }
 
-const CONFIG_PATH = join(import.meta.dir, '..', 'config.json');
+const DATA_DIR = join(import.meta.dir, '..', 'data');
+const CONFIG_PATH = join(DATA_DIR, 'config.json');
+
+const ROOT_DIR = join(import.meta.dir, '..');
+
+/** Migrate old root-level config files into data/ on first run. */
+export function migrateConfigs(): void {
+  mkdirSync(DATA_DIR, { recursive: true });
+  const configRoot = join(ROOT_DIR, 'config.json');
+  const scansRoot = join(ROOT_DIR, 'scans.json');
+
+  if (existsSync(configRoot) && !existsSync(CONFIG_PATH)) {
+    console.log('[migrate] 移动 config.json → data/config.json');
+    renameSync(configRoot, CONFIG_PATH);
+  }
+  if (existsSync(scansRoot)) {
+    const scansDst = join(DATA_DIR, 'scans.json');
+    if (!existsSync(scansDst)) {
+      console.log('[migrate] 移动 scans.json → data/scans.json');
+      renameSync(scansRoot, scansDst);
+    } else {
+      // Both exist — keep the data/ one, remove root
+      console.log('[migrate] 删除旧 scans.json（data/ 已存在）');
+      Bun.file(scansRoot).delete?.();
+    }
+  }
+}
 
 let config: AppConfig = {
   port: 3000,
+  recorder: { enabled: true },
   providers: {},
   mappings: {},
 };
@@ -56,12 +84,14 @@ async function readConfigFile(): Promise<AppConfig | null> {
 
   return {
     port: (raw.port as number) ?? 3000,
+    recorder: (raw.recorder as AppConfig['recorder']) ?? { enabled: true },
     providers,
     mappings: (raw.mappings ?? {}) as AppConfig['mappings'],
   };
 }
 
 export async function loadConfig(): Promise<AppConfig> {
+  await migrateConfigs();
   const loaded = await readConfigFile();
   if (loaded) {
     config = loaded;
@@ -184,17 +214,17 @@ export function removeMapping(name: string): boolean {
 
 // ─── Lookup ─────────────────────────────────────────────────
 
-export function lookupModel(clientName: string): { provider: ProviderConfig; upstreamModelId: string } | null {
+export function lookupModel(clientName: string): { provider: ProviderConfig; providerName: string; upstreamModelId: string } | null {
   // routing mappings first
   const mapping = config.mappings[clientName];
   if (mapping) {
     const provider = config.providers[mapping.provider];
-    if (provider) return { provider, upstreamModelId: mapping.modelId };
+    if (provider) return { provider, providerName: mapping.provider, upstreamModelId: mapping.modelId };
   }
   // fallback: search all provider models
   for (const [providerName, provider] of Object.entries(config.providers)) {
     if (clientName in provider.models) {
-      return { provider, upstreamModelId: clientName };
+      return { provider, providerName, upstreamModelId: clientName };
     }
   }
   return null;

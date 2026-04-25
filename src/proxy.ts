@@ -1,4 +1,4 @@
-import { lookupModel, getConfig, listModelNames } from './config';
+import { getConfig } from './config';
 import { CORS, json } from './http';
 import {
   handleListProviders, handleAddProvider, handleUpdateProvider, handleRemoveProvider,
@@ -10,11 +10,14 @@ import {
   handleTestDirect,
   handleReload,
 } from './admin';
-
-const D = decodeURIComponent;
-
+import { queryLogs, clearLogs, addSSEClient } from './recorder';
+import { getTraces as getHttpTraces, clear as clearHttpTraces, isEnabled as isHttpTraceOn, setEnabled as setHttpTraceOn } from './httpTrace';
+import { handleChatCompletions } from './handlers/chatCompletions';
+import { handleResponses } from './handlers/responses';
 // Bun bundles HTML + React automatically on import
 import dashboardHtml from '../public/index.html';
+
+const D = decodeURIComponent;
 
 export function startProxy(port: number): ReturnType<typeof Bun.serve> {
   const server = Bun.serve({
@@ -24,8 +27,8 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
       '/health': { GET: () => health() },
       '/api/health': { GET: () => health() },
       '/v1/models': { GET: () => clientModels() },
-      '/v1/chat/completions': { POST: req => proxyOpenAI('chat/completions', req) },
-      '/v1/responses': { POST: req => proxyOpenAI('responses', req) },
+      '/v1/chat/completions': { POST: req => handleChatCompletions(req) },
+      '/v1/responses': { POST: req => handleResponses(req) },
 
       '/api/providers': {
         GET: () => handleListProviders(),
@@ -68,6 +71,58 @@ export function startProxy(port: number): ReturnType<typeof Bun.serve> {
         POST: req => handleTestDirect(req),
       },
       '/api/reload': { POST: () => handleReload() },
+      '/api/logs': {
+        GET: req => {
+          const url = new URL(req.url);
+          return json(queryLogs({
+            limit: Number(url.searchParams.get('limit')) || undefined,
+            offset: Number(url.searchParams.get('offset')) || undefined,
+            endpoint: url.searchParams.get('endpoint') || undefined,
+            clientModel: url.searchParams.get('model') || undefined,
+            provider: url.searchParams.get('provider') || undefined,
+            from: url.searchParams.get('from') || undefined,
+            to: url.searchParams.get('to') || undefined,
+            errorOnly: url.searchParams.has('errorOnly'),
+          }));
+        },
+        POST: () => { clearLogs(); return json({ ok: true }); },
+      },
+      '/api/httptrace': { GET: () => json(getHttpTraces()) },
+      '/api/httptrace/clear': { POST: () => { clearHttpTraces(); return json({ ok: true }); } },
+      '/api/httptrace/config': {
+        GET: () => json({ enabled: isHttpTraceOn() }),
+        POST: async req => { const b = await req.json() as { enabled?: boolean }; if (typeof b.enabled === 'boolean') setHttpTraceOn(b.enabled); return json({ enabled: isHttpTraceOn() }); },
+      },
+      '/api/events': {
+        GET: () => {
+          let closed = false;
+          const stream = new ReadableStream({
+            start(ctrl) {
+              const unsub = addSSEClient(data => {
+                if (closed) return;
+                ctrl.enqueue(new TextEncoder().encode(data));
+              });
+              // Keep-alive
+              const keepAlive = setInterval(() => {
+                if (!closed) ctrl.enqueue(new TextEncoder().encode(': keepalive\n\n'));
+              }, 15000);
+              // Cleanup on close
+              const checkClosed = setInterval(() => {
+                if (closed) { unsub(); clearInterval(keepAlive); clearInterval(checkClosed); }
+              }, 1000);
+            },
+            cancel() { closed = true; },
+          });
+          return new Response(stream, {
+            headers: {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              Connection: 'keep-alive',
+              ...CORS,
+            },
+          });
+        },
+      },
     },
     async fetch(req): Promise<Response> {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -108,73 +163,4 @@ function clientModels(): Response {
     }
   }
   return json({ object: 'list', data });
-}
-
-async function proxyOpenAI(endpoint: string, req: Request): Promise<Response> {
-  let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return json({ error: '无效的 JSON 请求体' }, 400); }
-  if (!body.model || typeof body.model !== 'string') return json({ error: "缺少 'model' 字段" }, 400);
-
-  const upstream = lookupModel(body.model);
-  if (!upstream) {
-    const names = listModelNames();
-    return json({
-      error: {
-        message: `模型 '${body.model}' 未找到。可用: ${names.join(', ') || '无'}`,
-        type: 'model_not_found',
-      },
-    }, 404);
-  }
-
-  const target = `${upstream.provider.baseUrl.replace(/\/$/, '')}/${endpoint}`;
-  console.log(`[proxy] → ${body.model} → ${upstream.provider.baseUrl} (${upstream.upstreamModelId}) [${endpoint}]`);
-
-  try {
-    const res = await fetch(target, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${upstream.provider.apiKey}` },
-      body: JSON.stringify({ ...body, model: upstream.upstreamModelId }),
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      console.error(`[proxy] Upstream ${res.status}: ${t.slice(0, 200)}`);
-      return new Response(t, {
-        status: res.status,
-        headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json', ...CORS },
-      });
-    }
-    if (body.stream) {
-      const r = res.body?.getReader();
-      if (!r) return json({ error: '上游响应为空' }, 502);
-      return new Response(new ReadableStream({
-        async start(c) {
-          try {
-            while (true) {
-              const { done, value } = await r.read();
-              if (done) break;
-              c.enqueue(value);
-            }
-            c.close();
-          } catch (e) {
-            console.error('[proxy] stream:', e);
-            c.error(e);
-          } finally {
-            r.releaseLock();
-          }
-        },
-      }), {
-        status: res.status,
-        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...CORS },
-      });
-    }
-    const t = await res.text();
-    return new Response(t, {
-      status: res.status,
-      headers: { 'Content-Type': res.headers.get('Content-Type') ?? 'application/json', ...CORS },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[proxy] fetch: ${msg}`);
-    return json({ error: `上游连接失败: ${msg}` }, 502);
-  }
 }

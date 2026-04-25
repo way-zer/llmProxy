@@ -2,5 +2,4 @@ node_modules/
 /dist/
 *.log
 .env
-/config.json
-/scans.json
+/data/

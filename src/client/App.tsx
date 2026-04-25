@@ -4,6 +4,7 @@ import type { HealthInfo } from './api';
 import { Overview } from './Overview';
 import { Providers } from './Providers';
 import { Routes } from './Routes';
+import { Monitor } from './Monitor';
 
 // ─── Toast system ───────────────────────────────────────────
 
@@ -54,6 +55,7 @@ const TABS = [
   { id: 'overview', label: '概览' },
   { id: 'providers', label: '提供商' },
   { id: 'routes', label: '路由' },
+  { id: 'monitor', label: '监控' },
 ] as const;
 type TabId = (typeof TABS)[number]['id'];
 
@@ -141,6 +143,7 @@ export function App() {
         {tab === 'overview' && <Overview />}
         {tab === 'providers' && <Providers onRefresh={refreshHealth} />}
         {tab === 'routes' && <Routes onRefresh={refreshHealth} />}
+        {tab === 'monitor' && <Monitor />}
       </main>
     </ToastContext.Provider>
   );

@@ -1,7 +1,7 @@
 import type { UpstreamModel } from './types';
 import { join } from 'node:path';
 
-const PATH = join(import.meta.dir, '..', 'scans.json');
+const PATH = join(import.meta.dir, '..', 'data', 'scans.json');
 
 interface ScanEntry {
   models: UpstreamModel[];

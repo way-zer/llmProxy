@@ -93,7 +93,17 @@ export const api = {
   // Test
   test: (name: string) => req<TestResult>('POST', `/api/test/${encodeURIComponent(name)}`),
   testDirect: (provider: string, modelId: string) => req<TestResult>('POST', '/api/test-direct', { provider, modelId }),
-
   // Config
   reload: () => req<{ success: boolean; models: number; mappings: number; providers: number }>('POST', '/api/reload'),
-};
+
+  // Traces & logs
+  getLogs: (params?: Record<string, string | number | boolean>) => {
+    const qs = params ? '?' + Object.entries(params).filter(([,v]) => v !== undefined).map(([k,v]) => `${k}=${encodeURIComponent(v)}`).join('&') : '';
+    return req<{ logs: Array<Record<string, unknown>>; total: number }>('GET', `/api/logs${qs}`);
+  },
+  clearLogs: () => req<{ ok: boolean }>('POST', '/api/logs'),
+  getHttpTraces: () => req<Array<{ id: number; timestamp: string; endpoint: string; request: { method: string; url: string; headers: Record<string, string>; body: string }; response: { status: number; headers: Record<string, string>; body: string } | null; latencyMs: number; error: string | null }>>('GET', '/api/httptrace'),
+  getHttpTraceConfig: () => req<{ enabled: boolean }>('GET', '/api/httptrace/config'),
+  setHttpTraceConfig: (enabled: boolean) => req<{ enabled: boolean }>('POST', '/api/httptrace/config', { enabled }),
+  clearHttpTraces: () => req<{ ok: boolean }>('POST', '/api/httptrace/clear'),
+  };
