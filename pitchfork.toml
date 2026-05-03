@@ -1,0 +1,6 @@
+[daemons.llm]
+run = "bun run dev"
+retry = 0
+expected_port = [13000]
+auto_bump_port = false
+port_bump_attempts = 10
